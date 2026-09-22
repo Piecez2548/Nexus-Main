@@ -1,0 +1,105 @@
+import { canvasToBytes, luma, makeCanvas } from "@/features/finance/slipScanner/engine/image/canvas";
+import { analyzeImage, sharpen } from "@/features/finance/slipScanner/engine/image/imageEnhancer";
+import { enhancementFilterString, isEnhancementNeeded, planEnhancements } from "@/features/finance/slipScanner/engine/image/imageEnhancement";
+import { otsuThreshold } from "@/features/finance/slipScanner/engine/image/otsu";
+
+// OCR preprocessing (OCR tuning): correct brightness/contrast only when the
+// image actually needs it (GS-027's "only process when necessary" rule),
+// then upscale/downscale toward a target size and binarise (grayscale ->
+// Otsu threshold -> black/white) so watermarks/coloured backgrounds drop out
+// and text is crisp for Tesseract. Browser-only; returns the original bytes
+// off-browser or on any failure, so it never blocks OCR.
+//
+// The enhancement step (brightness/contrast/sharpen) is applied directly in
+// this function's own canvas pipeline rather than by calling
+// imageEnhancer.ts's enhanceIfNeeded() (still available standalone, just
+// unused here) -- real-device measurement found that going through
+// enhanceIfNeeded's own decode-filter-encode round trip, only to decode the
+// resulting PNG straight back again here, cost ~5-7s/image on this device
+// (the same class of PNG-encode cost the QR investigation identified) for
+// zero pixel benefit over drawing canvas-to-canvas in memory. The filter and
+// sharpen still apply at the same point in the pipeline (full resolution,
+// before the resize below) as enhanceIfNeeded's own implementation, so the
+// output is pixel-equivalent, not just visually similar.
+//
+// The final encode is PNG (canvasToBytes), not BMP. A custom BMP encoder was
+// tried here (its own encode is a fixed header write + raw byte copy, no
+// convertToBlob call, ~170x faster than PNG's encode step in isolation) and
+// initially looked like a clear win -- but a controlled on-device A/B
+// against the same real images found BMP's much larger uncompressed payload
+// (5.7-9.6MB vs PNG's 71-278KB for the same slip) adds real overhead to
+// Tesseract's own recognize() call (specifically toFirstTickMs -- dispatch +
+// transfer + setImage -- not the actual native OCR compute, which measured
+// identical either way), costing more than the encode step saved: net total
+// (encode+recognize) was slower with BMP in 5/6 real-image samples, ~1.2s/
+// image slower on average. Reverted; see the task registry's OCR A/B
+// benchmark entry for the full breakdown. Structured OCR results (amount,
+// merchant, date, time, reference) were byte-identical between formats
+// across every sample, so this revert changes nothing about accuracy.
+
+const TARGET_SHORT_EDGE = 1200;
+const MAX_UPSCALE = 2;
+
+export async function preprocessForOcr(bytes: Uint8Array): Promise<Uint8Array> {
+  if (typeof createImageBitmap !== "function") return bytes;
+
+  try {
+    const stats = await analyzeImage(bytes);
+    const plan = stats ? planEnhancements(stats) : null;
+    const needsEnhancement = plan !== null && isEnhancementNeeded(plan);
+
+    const bitmap = await createImageBitmap(new Blob([bytes as unknown as BlobPart]));
+
+    // Scale toward ~1200px on the short edge (helps Tesseract on small digits,
+    // and bounds memory/CPU on a full-resolution gallery photo); capped at 2×
+    // upscale for tiny images, but free to downscale large ones.
+    const scale = Math.min(MAX_UPSCALE, TARGET_SHORT_EDGE / Math.max(1, Math.min(bitmap.width, bitmap.height)));
+    const width = Math.round(bitmap.width * scale);
+    const height = Math.round(bitmap.height * scale);
+
+    const target = makeCanvas(width, height);
+    if (!target) return bytes;
+
+    if (needsEnhancement && plan) {
+      // Apply brightness/contrast/sharpen at full resolution (matching
+      // enhanceIfNeeded's own order exactly), on a full-size intermediate
+      // canvas, then draw that -- not the original bitmap -- scaled onto the
+      // target canvas. Canvas-to-canvas drawImage needs no encode/decode.
+      const full = makeCanvas(bitmap.width, bitmap.height);
+      if (!full) return bytes;
+      full.ctx.filter = enhancementFilterString(plan);
+      full.ctx.drawImage(bitmap, 0, 0);
+      if (plan.sharpen) {
+        full.ctx.filter = "none";
+        sharpen(full.ctx, bitmap.width, bitmap.height);
+      }
+      target.ctx.drawImage(full.canvas, 0, 0, width, height);
+    } else {
+      target.ctx.drawImage(bitmap, 0, 0, width, height);
+    }
+
+    const image = target.ctx.getImageData(0, 0, width, height);
+    const gray = new Uint8Array(width * height);
+    for (let i = 0, p = 0; i < image.data.length; i += 4, p += 1) {
+      gray[p] = Math.round(luma(image.data[i]!, image.data[i + 1]!, image.data[i + 2]!));
+    }
+
+    const threshold = otsuThreshold(gray);
+
+    // Binarise (value > threshold → white bg, else black text) in place,
+    // then write back to the canvas -- canvasToBytes below encodes from the
+    // canvas, not raw ImageData.
+    for (let i = 0, p = 0; i < image.data.length; i += 4, p += 1) {
+      const v = gray[p]! > threshold ? 255 : 0;
+      image.data[i] = v;
+      image.data[i + 1] = v;
+      image.data[i + 2] = v;
+      image.data[i + 3] = 255;
+    }
+    target.ctx.putImageData(image, 0, 0);
+
+    return await canvasToBytes(target.canvas);
+  } catch {
+    return bytes;
+  }
+}

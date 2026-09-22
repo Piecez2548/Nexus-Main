@@ -1,0 +1,163 @@
+import { useEffect, useState } from "react";
+import { Lock, ShieldCheck, KeyRound, ShieldOff, FingerprintPattern } from "lucide-react";
+
+import { useAppLockStore } from "@/store/appLockStore";
+import { isBiometricAvailable } from "@/features/lock/services/biometricService";
+import Drawer from "@/components/ui/Drawer";
+import AppLockScreen from "@/features/lock/components/AppLockScreen";
+import ChangePinForm from "@/features/lock/components/ChangePinForm";
+import DisableLockForm from "@/features/lock/components/DisableLockForm";
+import EnableBiometricForm from "@/features/lock/components/EnableBiometricForm";
+import { useTranslation } from "@/i18n/useTranslation";
+import { useToast } from "@/hooks/useToast";
+import SettingsCard from "./SettingsCard";
+
+type DrawerContent = "setup" | "change" | "disable" | "enableBiometric" | null;
+
+export default function SecuritySettings() {
+  const isEnabled = useAppLockStore((s) => s.isEnabled());
+  const autoLockMinutes = useAppLockStore((s) => s.autoLockMinutes);
+  const setAutoLockMinutes = useAppLockStore((s) => s.setAutoLockMinutes);
+  const lock = useAppLockStore((s) => s.lock);
+  const biometricEnabled = useAppLockStore((s) => s.biometricEnabled);
+  const disableBiometric = useAppLockStore((s) => s.disableBiometric);
+  const { t } = useTranslation();
+  const toast = useToast();
+
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+
+  useEffect(() => {
+    isBiometricAvailable().then(setBiometricAvailable);
+  }, []);
+
+  async function handleDisableBiometric() {
+    await disableBiometric();
+    toast.success(t("settings.biometricDisableSuccess"));
+  }
+
+  const AUTO_LOCK_OPTIONS = [
+    { value: 0, label: t("settings.autoLockNever") },
+    { value: 5, label: t("settings.autoLockMinutes", { count: 5 }) },
+    { value: 15, label: t("settings.autoLockMinutes", { count: 15 }) },
+    { value: 30, label: t("settings.autoLockMinutes", { count: 30 }) },
+    { value: 60, label: t("settings.autoLockHour") },
+  ];
+
+  const [drawerContent, setDrawerContent] = useState<DrawerContent>(null);
+
+  return (
+    <SettingsCard
+      title={t("settings.security")}
+      description={t("settings.securityDescription")}
+    >
+      {!isEnabled ? (
+        <button
+          type="button"
+          onClick={() => setDrawerContent("setup")}
+          className="flex items-center gap-2 rounded-xl px-4 py-2 transition nexus-primary-action"
+        >
+          <Lock size={16} />
+          {t("settings.enableAppLock")}
+        </button>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 text-sm text-green-500">
+            <ShieldCheck size={16} />
+            {t("settings.appLockEnabled")}
+          </div>
+
+          <div>
+            <label htmlFor="auto-lock-minutes" className="mb-1 block text-sm text-zinc-500 dark:text-zinc-400">
+              {t("settings.autoLockLabel")}
+            </label>
+            <select
+              id="auto-lock-minutes"
+              value={autoLockMinutes}
+              onChange={(e) => setAutoLockMinutes(Number(e.target.value))}
+              className="w-full rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 outline-none focus:border-brand-500"
+            >
+              {AUTO_LOCK_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={lock}
+              className="flex flex-col items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4 transition hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            >
+              <Lock size={20} className="text-brand-500" />
+              <span className="text-sm font-medium">{t("settings.lockNow")}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDrawerContent("change")}
+              className="flex flex-col items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 p-4 transition hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            >
+              <KeyRound size={20} className="text-brand-500" />
+              <span className="text-sm font-medium">{t("settings.changePin")}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDrawerContent("disable")}
+              className="flex flex-col items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-4 transition hover:bg-red-500/20"
+            >
+              <ShieldOff size={20} className="text-red-500" />
+              <span className="text-sm font-medium text-red-500">{t("settings.disable")}</span>
+            </button>
+          </div>
+
+          {biometricAvailable && (
+            <>
+              {!biometricEnabled ? (
+                <button
+                  type="button"
+                  onClick={() => setDrawerContent("enableBiometric")}
+                  className="flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-2 transition hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                >
+                  <FingerprintPattern size={16} className="text-brand-500" />
+                  {t("settings.enableBiometric")}
+                </button>
+              ) : (
+                <div className="flex flex-col items-stretch gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-2 text-sm text-green-500">
+                    <FingerprintPattern size={16} />
+                    <span>{t("settings.biometricEnabledStatus")}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDisableBiometric}
+                    className="w-full rounded-lg py-2 text-left text-sm font-medium text-red-500 transition hover:bg-red-500/10 hover:underline sm:w-auto sm:py-1 sm:text-right"
+                  >
+                    {t("settings.disableBiometric")}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      <Drawer open={drawerContent !== null} onClose={() => setDrawerContent(null)}>
+        {drawerContent === "setup" && (
+          <AppLockScreen mode="setup" onDone={() => setDrawerContent(null)} />
+        )}
+        {drawerContent === "change" && (
+          <ChangePinForm onDone={() => setDrawerContent(null)} />
+        )}
+        {drawerContent === "disable" && (
+          <DisableLockForm onDone={() => setDrawerContent(null)} />
+        )}
+        {drawerContent === "enableBiometric" && (
+          <EnableBiometricForm onDone={() => setDrawerContent(null)} />
+        )}
+      </Drawer>
+    </SettingsCard>
+  );
+}

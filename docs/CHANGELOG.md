@@ -1,0 +1,625 @@
+# Changelog
+
+## 2026-09-15 — OCR slip review queue
+
+- Gallery scans now open the existing Import Preview for OCR or otherwise unverified slips instead of dropping them after the verified QR auto-import. A person can review, edit, import, or return to the pending queue while the strict automatic-import gate remains unchanged.
+- Pending review candidates are retained in the device-local scan tables and restored when Transactions opens again; resolved candidates are removed across their original scan runs.
+
+## 2026-09-14 — Date-range gallery recovery
+
+- Explicit date-range gallery scans now reprocess unchanged images instead of treating the scan cache as a completed transaction import. This lets a person recover a transaction after removing it while keeping the fast incremental cache for routine open-ended scans.
+
+## 2026-09-14 — Gallery scan selected-image fallback
+
+- Fixed selected images being sent through the whole-gallery QR-only filter. Explicitly picked slips now run the normal QR → OCR pipeline, so a blurred, cropped or QR-free slip can still be extracted for the existing verification rules; open-ended gallery scans keep the QR-only fast path.
+
+## 2026-09-14 — Android release signing readiness review
+
+- Verified that the Android `release` variant assembles reproducibly, but its signing report has no configuration and the output is `app-release-unsigned.apk`.
+- Recorded the artifact digest and `apksigner` failure evidence; no production keystore or signing secret was created or accessed. RB-012 remains In Progress. See [Android release signing readiness](ANDROID_RELEASE_SIGNING_READINESS_2026-09-14.md).
+
+## 2026-09-14 — Final regression smoke
+
+- Re-ran the core and mobile browser smoke flows after the Settings UX pass: 5/5 Playwright tests passed, including mobile navigation, FAB, CRUD, reload and a narrow drawer form.
+- Verified the installed vivo V2348 APK through Dashboard → Transactions → Settings navigation with zero WebView page errors and no horizontal overflow at 420px.
+
+## 2026-09-14 — Mobile Settings usability pass
+
+- Reduced Settings card and page spacing on small screens while retaining the desktop layout.
+- Stacked the enabled fingerprint status and disable action on mobile so the status remains readable and the destructive action has a clear touch target.
+- Added a four-digit PIN hint, native password-manager semantics, accessible error wiring and submit protection to the fingerprint setup form.
+
+## 2026-09-14 — Android biometric credential fallback
+
+- Fixed the vivo V2348 setup failure where fingerprint authentication succeeded but Android returned a null `CryptoObject`, causing `Failed to encrypt credentials: null`. The native bridge now retains the cipher supplied to the prompt and safely reuses it for secure credential storage/retrieval, with a guarded failure path.
+- Added a five-second Android authentication validity window for secure credential setup/readback to support OEMs that reject per-operation cipher mode after a successful fingerprint prompt.
+- Added a Vivo/OEM compatibility fallback: when the provider still rejects the post-prompt Keystore operation, Nexus performs a fresh biometric verification and uses the plugin's encrypted compatibility credential store instead of showing a red setup error or dropping the credential.
+
+## 2026-09-14 — Verified QR repeat-scan identity
+
+- Persisted the verified QR payload inside encrypted transaction content and included it in Smart Import duplicate signals. Re-scanning the same slip now skips it even when OCR changes the date or time. Editing a transaction preserves this internal metadata. Added regression coverage for the repeat-scan case.
+
+## 2026-09-14 — Android QR scan benchmark
+
+- Measured the QR-only gallery path on a representative vivo V2348 gallery: 113 images in 108.7 seconds (~1.04 images/second), sampled p50 completion interval ~704 ms and p95 ~2,072 ms. A one-second p95 SLA remains unclaimed. The run also exposed a duplicate-identity gap when a repeat scan's OCR date shifted; follow-up correction is required before repeat-scan idempotency can be promised.
+
+## 2026-09-14 — QR transaction sync regression coverage
+
+- Added an isolated sync-engine regression covering verified QR-style transaction create, edit and delete operations across two simulated devices, including tombstone cleanup and duplicate-free convergence.
+
+## 2026-09-13 — Verified QR auto-import
+
+- Gallery auto-import now accepts only positive-amount, CRC-valid EMVCo QR candidates. OCR-only and unverified QR results remain excluded from automatic transaction creation so imported data favors correctness over recall.
+
+## 2026-09-13 — Unified gallery scanning
+
+- Removed the standalone Scan Slip entry point and legacy single-slip scanner. GalleryScanFlow is now the sole scanner and handles both single-image and batch gallery scans, automatically importing extracted transactions.
+
+## 2026-09-13 — Automatic gallery scan import
+
+- Gallery scans now send extracted, bank-filtered candidates through Smart Import automatically when scanning finishes. Duplicate detection, validation and Import History remain active; the separate review drawer is no longer required for this workflow. GalleryScanFlow tests, the slip-scanner suite, TypeScript, lint and the release build passed.
+
+## 2026-09-13 — Slip scan setup simplification
+
+- Gallery scanning now starts with a one-tap “Scan all photos” action for the common case. Bank selection, date range, search, estimates and pause/cancel controls remain available under optional advanced filters. The remembered bank preference is preserved when using the unfiltered action. Targeted scanner tests, TypeScript and lint passed. See [slip scan setup](UX_SLIP_SCAN_SETUP_2026-09-13.md).
+
+## 2026-09-13 — Quick Add transaction entry
+
+- New transaction forms now show only the essential fields first; date, time, recipient, notes, and recurring settings are grouped under “More”. Editing and imported/template drafts keep metadata visible for review, and background merchant/recipient category suggestions remain active. Full suite 451/451 files and 2,844/2,844 tests passed. See [Quick Add transaction entry](UX_QUICK_ADD_2026-09-13.md).
+
+## 2026-09-13 — Repository presentation baseline
+
+- Reworked the root README for portfolio and hiring review, added contribution and security entry points, and added GitHub pull-request and issue templates. The repository's personal/demo scope, optional services, current security boundaries, and lack of an open-source license are now explicit.
+
+## 2026-09-13 — Daily navigation simplification
+
+- Desktop navigation now leads with Dashboard, Transactions and Budget under “Daily use”; all other routes remain under grouped “All features” sections. Mobile keeps the bottom quick-navigation bar and removes duplicate daily links from More. Full suite 451/451 files and 2,844/2,844 tests, TypeScript, lint, release build and bundle budget passed. See [daily navigation simplification](UX_DAILY_NAV_2026-09-13.md).
+
+## 2026-09-13 — QR-only gallery scan fast path
+
+- Full-gallery auto-scan now filters non-QR images before candidate creation, so OCR runs only for detected QR slips that need fallback fields; manual picked-image scanning is unchanged. QR recovery is bounded to two transformed attempts in the fast path. TypeScript, lint, targeted scanner tests (25/25) and production build passed. See [QR-only gallery scan](QR_ONLY_GALLERY_SCAN_2026-09-13.md).
+
+## 2026-09-13 — Biometric unlock recovery
+
+- Fixed native fingerprint state reconciliation across startup/update/resume, surfaced secure-storage setup failures, and made Android build scripts verify the committed biometric hardening patch. Focused tests 75/75, lint, TypeScript/build and Android debug build passed. See [biometric unlock fix](BIOMETRIC_UNLOCK_FIX_2026-09-13.md).
+
+## 2026-09-13 — Full isolated-suite result
+
+- Completed the isolated Vitest stability check: 451/451 files and 2,837/2,837 tests pass in 307.27s with 16 workers. Confirmed `--no-isolate` causes state leakage, so the safe isolated configuration remains unchanged. See [test-suite runtime investigation](TEST_SUITE_RUNTIME_INVESTIGATION_2026-09-13.md).
+
+## 2026-09-13 — Cloud-sync security maintenance
+
+- Re-ran linked Supabase schema lint with no errors, retained the existing RLS/MFA controls and recorded the Docker limitation for a linked schema diff. Optional weekly digest objects and advisor decisions remain deferred for the current personal/demo scope. See [cloud-sync security maintenance](CLOUD_SYNC_SECURITY_MAINTENANCE_2026-09-13.md).
+
+## 2026-09-13 — Focused cycle complete
+
+- Closed the current ordinary personal/demo maintenance cycle after the full-suite stability diagnosis, cloud-sync security verification and existing core regression evidence were recorded. No essential product-code change is pending; release-only work stays deferred until scope changes.
+
+## 2026-09-13 — Full-suite runtime investigation
+
+- Reproduced the Nexus full-suite run exceeding seven minutes with 4 and 8 Vitest workers, then verified the repeatedly visible individual suites pass (TopBar 9/9, Transactions 16/16, Recipient Learning 2/2, Gallery Scan 4/4). No production code was changed without a narrower cause. Evidence: [Test-suite runtime investigation](TEST_SUITE_RUNTIME_INVESTIGATION_2026-09-13.md).
+
+## 2026-09-13 — Focused ordinary-project plan
+
+- Reduced the active plan to test-suite stability, Supabase cloud-sync security maintenance and core regression watch. Legal, commercial, organizational and production-release work is paused until the project scope changes. Evidence: [Focused project plan](FOCUSED_PLAN_2026-09-13.md).
+
+## 2026-09-13 — Scope change: RB-001 removed from ordinary project plan
+
+- Per user direction, RB-001 operator/accountability work is now **Not Applicable for the current personal/demo scope**. It must reopen before any public, paid or real-data pilot; the release blockers and evidence records remain preserved for that future scope.
+
+## 2026-09-13 — RB-012 Android signing baseline
+
+- Confirmed the Android release build has no production signing configuration. A no-install release build attempt was blocked by a local Gradle loopback-runtime error; no signing material was created or accessed. Evidence: [RB-012 Android release signing baseline](RB_012_ANDROID_RELEASE_SIGNING_BASELINE_2026-09-13.md).
+
+## 2026-09-13 — RB-015 release governance baseline
+
+- Recorded the current pushed candidate, CI gates and repository governance gap. Branch protection, required reviewers, deployment approval and rollback ownership remain unassigned; no release approval was inferred. Evidence: [RB-015 release governance baseline](RB_015_RELEASE_GOVERNANCE_BASELINE_2026-09-13.md).
+
+## 2026-09-13 — RB-019 commercial boundary baseline
+
+- Reaffirmed the personal-use product boundary and recorded candidate paid value as hypotheses only. No price, refund policy, SLA or revenue claim was invented; measured costs and willingness-to-pay evidence remain pending. Evidence: [RB-019 commercial boundary](RB_019_COMMERCIAL_BOUNDARY_BASELINE_2026-09-13.md).
+
+## 2026-09-13 — RB-006 provider facts baseline
+
+- Added verified Supabase project/region and current Vercel deployable facts to the vendor register while keeping contract, subprocessor, retention and transfer fields explicitly unknown pending Privacy/Legal review. Evidence: [Vendor and transfer register](VENDOR_AND_TRANSFER_REGISTER.md).
+
+## 2026-09-13 — RB-017 support baseline
+
+- Indexed the incident runbook and recovery evidence as the support-operation baseline. Staffing, channels, service hours, response targets and RTO/RPO remain unset; no SLA claim was added. Evidence: [RB-017 support and recovery targets](RB_017_SUPPORT_AND_RECOVERY_TARGETS_2026-09-13.md).
+
+## 2026-09-13 — RB-011 IP/licensing baseline
+
+- Recorded the Nexus dependency SBOM and package-license inventory for legal/IP review. Ownership, asset permissions and approved LICENSE/NOTICE remain open; no distribution rights were inferred. Evidence: [RB-011 IP/licensing baseline](RB_011_IP_LICENSING_EVIDENCE_2026-09-13.md).
+
+## 2026-09-13 — RB-023 security posture record
+
+- Mapped plaintext backup, optional encryption, local PIN/biometric, MFA recovery and CSP decisions to their current controls and open owner actions. No residual risk was accepted by automation. Evidence: [RB-023 security posture decisions](RB_023_SECURITY_POSTURE_DECISIONS_2026-09-13.md).
+
+## 2026-09-13 — RB-018 privacy-safe pilot baseline
+
+- Recorded the on-device aggregate telemetry controls and their limits for a future pilot. No cohort or analytics consent was activated; event allow-list, retention and Privacy/Product approval remain open. Evidence: [RB-018 privacy-safe pilot evidence](RB_018_PRIVACY_SAFE_PILOT_EVIDENCE_2026-09-13.md).
+
+## 2026-09-13 — RB-016 recovery evidence index
+
+- Indexed the existing encrypted backup/restore, account-recovery and sync-conflict drills against RB-016. Engineering scenarios pass, while RTO/RPO, provider-outage, lost-device scope and Operations/QA sign-off remain open. Evidence: [RB-016 recovery drill evidence](RB_016_RECOVERY_DRILL_EVIDENCE_2026-09-13.md).
+
+## 2026-09-13 — RB-021 Supabase production verification
+
+- Read-only linked-project checks confirmed 8/8 migration parity, no schema-lint errors, RLS on all six public tables and the intended backup-code RPC ACL. Security/performance advisor findings and the optional weekly-digest schema gap remain recorded for owner decisions. Evidence: [RB-021 Supabase verification](RB_021_SUPABASE_PRODUCTION_VERIFICATION_2026-09-13.md).
+
+## 2026-09-13 — RB-020 web deployment smoke
+
+- Published the current Nexus documentation candidate and verified HTTP 200 smoke responses for Nexus All/Main, Nexus-Tools and DataLens, with commit and deployment IDs recorded. RB-020 remains pending release-owner and QA acceptance. Evidence: [RB-020 deployment smoke](RB_020_DEPLOYMENT_SMOKE_2026-09-13.md).
+
+## 2026-09-13 — RB-022 separate deployables verification
+
+- Prepared and published engineering evidence for Nexus-Tools and DataLens: Tools 54/54 unit tests plus 105 passed/1 expected browser skip, and DataLens frontend 3/3 E2E plus backend 42/42 tests. Both production deployments returned HTTP 200. RB-022 remains pending named owner/reviewer acceptance. Evidence: [RB-022 separate deployables verification](RB_022_SEPARATE_DEPLOYABLES_VERIFICATION_2026-09-13.md).
+
+## 2026-09-13 — Technical quality audit
+
+- Completed a conservative Nexus All/Main frontend audit at 18/20 within the sampled scope. No new product defect was verified; external release accountability, full-suite runtime investigation and degraded detector dependencies remain tracked. Evidence: [Technical Quality Audit](TECHNICAL_QUALITY_AUDIT_2026-09-13.md).
+
+## 2026-09-13 — Sync settings test stability
+
+- Completed the missing dynamic sync-engine mock and asynchronous assertion in `SyncSettings` coverage; the settings suite now passes 48/48. Evidence: [TEST-STABILITY-002](TEST_STABILITY_002_2026-09-13.md).
+
+## 2026-09-13 — Normal production sync observation
+
+- Observed 16 successful full-sync passes in an unlocked Android production session with zero typed sync or Realtime errors. Evidence: [SYNC-REALTIME-OBS-003](SYNC_REALTIME_OBS_003_2026-09-13.md).
+
+## 2026-09-13 — Expected locked-startup sync classification
+
+- Classified `EncryptionLockedError` during app-lock startup as an expected retry state, removing the false-positive operational error while preserving telemetry for genuine sync failures. Evidence: [SYNC-REALTIME-ERROR-CLASSIFY-001](SYNC_REALTIME_ERROR_CLASSIFY_001_2026-09-13.md).
+
+## 2026-09-13 — Runtime telemetry inspection
+
+- Added the read-only `window.__NEXUS_TELEMETRY__` hook and verified a live aggregate snapshot on the installed Android WebView. Evidence: [SYNC-REALTIME-OBS-002](SYNC_REALTIME_OBS_002_2026-09-13.md).
+
+## 2026-09-13 — Sync observability
+
+- Added privacy-safe optional monitoring for sync failures and Realtime channel errors, including whether the failed path was full or targeted and the validated table when available. No account IDs, encrypted payloads or entity values are sent as extra context. Evidence: [SYNC-REALTIME-OBS-001](SYNC_REALTIME_OBS_001_2026-09-13.md).
+- Local telemetry now records sync full/targeted durations and generic sync/Realtime error counters for developer inspection without network transmission.
+
+## 2026-09-13 — Realtime UPDATE routing diagnosis
+
+- Applied `REPLICA IDENTITY FULL` to `public.synced_records` so Realtime UPDATE/DELETE payloads retain the stable `table_name` routing hint when only the opaque encrypted payload changes.
+- Fresh production-to-Android edit propagation emitted a targeted `transactions` pull and appeared in approximately 10.2 seconds; deletion removed the temporary row in approximately 8.0 seconds. Evidence: [SYNC-REALTIME-DIAG-001](SYNC_REALTIME_DIAG_001_2026-09-13.md).
+
+## 2026-09-13 — Cross-device sync measurement
+
+- Desktop-to-Android edit propagation was measured end to end: the temporary transaction changed from ฿37 to ฿38 and appeared on the phone in approximately 12.2 seconds.
+- This trace completed through the existing 24-table timer fallback; no targeted Realtime pull request was observed for this event. The result is recorded as a delivery-diagnosis input, not as targeted-path latency evidence. [Evidence](SYNC_CROSS_DEVICE_MEASURE_001_2026-09-13.md).
+
+## 2026-09-13 — Targeted pull runtime measurement
+
+- Measured the installed Android build's targeted pull path: a `budgets` invocation emitted exactly one remote pull request and completed in approximately 458 ms.
+- The encrypted mobile fixture was cleaned up after the trace; no payload contents were exported. Evidence: [SYNC-REALTIME-MEASURE-001](SYNC_REALTIME_MEASURE_001_2026-09-13.md).
+
+## 2026-09-13 — Targeted Realtime pull
+
+- A validated Realtime table hint now runs the existing sync safeguards while pulling only the changed table.
+- Timer, online and manual syncs continue to pull all 24 tables as the recovery boundary for missed or malformed Realtime events.
+- Added regressions proving targeted pulls do not issue unrelated table requests and that full-pass ordering remains unchanged. Evidence: [SYNC-TARGETED-PULL-001](SYNC_TARGETED_PULL_001_2026-09-13.md).
+
+## 2026-09-13 — Realtime table pull priority
+
+- Realtime payloads now carry a validated sync-table hint into the existing full-sync engine.
+- The hinted table is pulled in the first deterministic batch of four, reducing time to the affected table without creating a second targeted-sync path or weakening the complete 24-table pass.
+- Added shared sync-table whitelist coverage and regressions for event parsing, preferred ordering and fallback behavior. Evidence: [SYNC-PULL-PRIORITY-001](SYNC_PULL_PRIORITY_001_2026-09-13.md).
+
+## 2026-09-13 — Bounded full-sync pull window
+
+- Pulls independent sync tables in deterministic batches of four concurrent requests, while processing results, errors and store refreshes in the original table order.
+- Physical Android measurement completed the 24-table pull pass in 2,212.9 ms; the changed transaction appeared in 1,208.0 ms. The pull-window regression verified exactly four active requests and all 24 tables.
+- Related sync suite 153/153, TypeScript, lint, release build, bundle budget and Android v2-signature verification passed. [Evidence](SYNC_PASS_PERF_001_2026-09-13.md).
+
+## 2026-09-13 — Realtime foreground sync wake-up
+
+- Added a user-filtered Supabase Realtime subscription that wakes the existing deterministic sync engine when same-account cloud data changes; retained the five-second timer and online-event recovery paths.
+- Coalesces Realtime events received during an active sync into one immediate follow-up pass, after a physical overlapping-write trace exposed a discarded-event fallback delay.
+- Added and applied migration `20260913014500` to publish `public.synced_records` through `supabase_realtime` while retaining the table's row-level security.
+- Final physical Android cloud-write-to-UI traces were 1,038.4/1,209.5/2,693.3 ms (median 1,209.5 ms), 78.6% below the previous 5,654 ms median. Related suite 152/152, production smoke 2/2, TypeScript, lint, release/Android build, production deployment and verified in-place APK install passed. [Evidence](SYNC_TRIGGER_001_2026-09-13.md).
+
+## 2026-09-13 — Earlier sync UI refresh
+
+- Refreshes an affected store immediately after its table pull succeeds, instead of keeping an already-applied transaction invisible until all 24 sequential table pulls finish.
+- Reuses decrypted content for unchanged encrypted envelopes within the active DEK session, so an early store refresh decrypts only rows that actually changed on the wire.
+- Retains the final affected-store refresh after account/category deduplication so dependent finance views finish in a consistent state.
+- Added regressions for early visibility, cache invalidation after an encrypted write, independent returned objects, and isolation across DEK changes.
+- Validation: focused sync/encryption suite 63/63, related suite 224/224, desktop/mobile CRUD E2E 10/10, TypeScript, configured lint, release build and bundle budget passed. Deployment and physical post-deployment measurement are recorded in [the fix report](SYNC_LATENCY_FIX_2026-09-13.md).
+
+## 2026-09-12 — Retry skipped uploads and repair existing cursors
+
+- Pull now acknowledges only the exact versions successfully applied to local storage. Rejected payloads and edits made during pull remain pending, with the cursor check/update committed in one transaction.
+- Upgrade the one-time cursor repair to v2 so existing installations can resend still-present edits previously skipped by the old bookkeeping. Server version/tombstone guards remain in place.
+- Conflict drill 17/17, related suite 221/221 and desktop/mobile CRUD browser tests 10/10 passed. TypeScript, lint and release build passed.
+- Published `dpl_HfyjCfwCekpnuyTX4wK7CrtkTGMK` and installed the verified debug APK on vivo V2348. Published patch markers and installed APK hash verified. [Evidence](SYNC_CONFLICT_FIX_003_2026-09-12.md).
+
+## 2026-09-12 — Clock-rollback sync protection
+
+- Allocate durable monotonic local versions in the same IndexedDB transaction as the row write, after encryption, so clock rollback and same-millisecond edits cannot hide a mutation behind its push cursor.
+- Reuse the allocator for shared repositories, milestone events, encryption/decryption migrations and legacy metadata backfill. Preserve cloud/backup versions on import.
+- Full suite: 451 files, 2817 passed / 1 expected failure (SC-003). Final related suite: 211 passed / 1 expected failure. Mobile/desktop CRUD browser tests 10/10, TypeScript, lint and release build passed.
+- Deployed `dpl_9QRJueD4C8zZX6mdF2BGVmYkBWpM` to Nexus production and installed the matching verified debug APK on vivo V2348. Published assets, production smoke and installed APK hash checked. [Evidence](SYNC_CONFLICT_FIX_002_2026-09-12.md).
+
+## 2026-09-12 — Stale cross-device upload protection
+
+- Added an atomic Postgres trigger guard that retains a newer live cloud payload when an older offline device reconnects later, while preserving terminal tombstones and server-generated pull timestamps.
+- Converted both SC-001 reconnect orders to ordinary passing acceptance tests; the focused drill now reports 7 passed / 2 expected failures and the related suite reports 157 passed / 2 expected failures.
+- Applied migration `20260912220000` to the linked Nexus Supabase project and confirmed local/remote migration alignment. SC-002 and SC-003 remain open. [Fix report](SYNC_CONFLICT_FIX_001_2026-09-12.md).
+
+## 2026-09-12 — Offline/conflict/outage drill
+
+- Added a nine-scenario synthetic relay drill with independent device database snapshots, server timestamps, terminal tombstones, provider failures and lost write acknowledgements.
+- Six scenarios passed; three initially reproduced data-integrity defects: stale upload divergence, clock-rollback edit loss, and a failed upload skipped by the pull-induced push watermark.
+- The drill preserved all three desired acceptance assertions as expected failures at discovery time. SC-001 was later fixed and deployed; SC-002 and SC-003 remain open. [Findings](SYNC_CONFLICT_VERIFICATION_2026-09-12.md).
+
+## 2026-09-12 — Recovery patch installed on Android test device
+
+- Built and v2-signature-verified a debug APK containing the account/PIN recovery safeguards, then installed it in place on the connected vivo V2348 with application data preserved.
+- Confirmed the installed APK hash exactly matches the built artifact, existing app storage/account session survived, and MainActivity launched successfully. Recovery/lock regressions passed 70/70 and configured lint passed.
+- This remains a debug-device artifact; no production password/PIN or encrypted user data was changed, and live Android recovery remains unverified. [Android report](ACCOUNT_RECOVERY_ANDROID_2026-09-12.md).
+
+## 2026-09-12 — Recovery patch deployed
+
+- Published the account/PIN recovery patch as Vercel production deployment `dpl_C16PWvTQ6ScS3xvXsAb91qgYUTVp` and verified the public Nexus alias and patch markers in the served JavaScript assets.
+- Production TypeScript/build/bundle budget passed; production smoke passed 2/2, with mobile cold-login median LCP 956 ms and CLS 0 in the three measured samples.
+- No production password, mailbox or account data was changed. Android APK update and real mailbox/physical-device recovery remain pending. [Deployment report](ACCOUNT_RECOVERY_DEPLOYMENT_2026-09-12.md).
+
+## 2026-09-12 — Account and PIN recovery safeguards
+
+- Stop escrow recovery after failed reauthentication, pending MFA or an account mismatch instead of relying on a potentially stale auth-store user.
+- Validate the recovered key against existing local encrypted rows before replacing the PIN wrap, preserving the original local state on mismatch or unreadable ciphertext.
+- Handle new-PIN saving failures with retry and accessible Thai/English error messages; clear credential/key form state when no longer needed.
+- Added account recovery, data-preservation and password-reset failure regressions; documented the separate recovery-key repair step after account-password reset.
+
+## 2026-09-12 — Complete backup/restore drill
+
+- Added one encrypted disaster-recovery regression covering all 25 user-content tables from import through encrypted storage, portable export, complete simulated loss and exact-value restore.
+- Verified all 24 synced tables keep synthetic content encrypted at rest, every portable backup key is present, and all 25 tables return with the original identity and relationship values.
+- Corrected backup-test isolation to clear `scheduleItems` between cases. No backup production logic or production data changed.
+
+## 2026-09-12 — Cross-device edit identity fix
+
+- Preserved each stored row's `syncId` when form-shaped update payloads omit sync metadata, preventing a remote device from keeping the old row and adding the edit as a duplicate.
+- Corrected the two-device regression scenario to use real form-shaped updates and assert one-row convergence in both directions.
+- Confirmed the pre-fix defect on a physical Android device and desktop browser, then verified the corrected desktop-to-Android create/edit path without duplicates.
+- Installed the fixed APK in place and deployed Nexus production as `dpl_34vm47r1KBtJcwRjDriovsHEp3Cm`; post-deployment production smoke passed 2/2, the desktop test row was removed and the ledger returned to its 32-row baseline.
+
+## 2026-09-12 — Mobile/desktop CRUD and sync verification
+
+- Added mobile transaction add/edit/reload/delete browser coverage alongside the existing desktop CRUD lifecycle.
+- Added a two-device sync regression proving create, update and delete propagation from desktop to mobile and from mobile to desktop without allowing a stale device to resurrect a deletion.
+- Added coverage for signed-in five-second background sync and immediate retry when a device returns online. No application business logic changed.
+
+## 2026-09-12 — Core finance smoke coverage
+
+- Added one production-build browser flow for the ordinary-project baseline: open Dashboard, create synthetic income and expense entries, verify calculated totals, reload the page, and confirm both persisted rows through the Finance navigation.
+- Verified the core flow with 9/9 related browser tests, 26/26 related integration tests, TypeScript, lint, release build and bundle budget.
+
+## 2026-09-09 — Backup and media-secret hardening
+
+- Bounded Nexus backup imports to 25 MB and 250,000 rows, rejected unsupported versions, invalid export dates, and non-object rows before modifying local data.
+- Split Nexus Tools administrator authorization from owner-media cookie signing with a dedicated production secret.
+- Pinned CI GitHub Actions to reviewed commit SHAs and added production-dependency vulnerability gates.
+- Reconciled the four production Supabase migrations with migration history; a linked dry run now reports the database is up to date.
+- Added a repeatable Windows Android build using JDK 21 and a short temporary directory, produced a verified debug APK, and installed it in-place on the connected test device.
+- Hardened MFA backup codes: password-only sessions can no longer list or replace recovery hashes; redemption now uses an atomic, rate-limited database RPC and all management requires `aal2`.
+- Added reproducible, validated CycloneDX production-dependency SBOM generation and 90-day CI artifacts for Nexus, Nexus Tools, and the DataLens frontend.
+- Deployed Nexus `dpl_BZkReB55ATVkS3dmLcTnZHpf6jGg` and Tools `dpl_EPu5Kjcc4eG2TRbfBAjPrxNH4phQ`; production smoke passed 2/2.
+
+## 2026-09-09 — Five-role executive and compliance hardening
+
+- Completed independent legal/privacy, security architecture, executive UX, QA/reliability, and commercial due-diligence reviews with cross-review.
+- Added production security headers to Nexus and verified them in automated smoke coverage.
+- Hardened DataLens v0.7.0 with fail-closed hosted authentication, TOTP `aal2` enforcement, mobile Nexus return navigation, and non-certification approval language.
+- Applied live Supabase search-path and RLS initialization-plan hardening; the production performance advisor now reports no issues.
+- Added incident-response, data-rights/retention, vendor-transfer, legal-readiness, executive-UX, and commercial due-diligence records plus CycloneDX npm SBOMs.
+- Deployed Nexus `dpl_6Jm7nBCSf45s874JLB1KpSH8WndP`, Tools `dpl_6EebzdVEhB44hiGmBFaz5AP5RauJ`, and DataLens `dpl_88vRJpym3LkSDpXAnYEeAdSEtxpz`; production smoke passed.
+
+## 2026-09-08 — Executive readiness hardening
+
+- Removed the unconsumed legacy gallery-scan presentation component after confirming the live Transactions flow already uses the complete concurrent scanner pipeline.
+- Added an enforceable release bundle budget (500 KiB per JS chunk, 4 MiB total JS) and connected it to CI.
+- Scoped product lint away from generated output and duplicated agent/skill tooling; the verified product lint now completes without warnings.
+- Updated the vulnerable transitive XML dependency through the compatible lockfile resolution; `npm audit` now reports zero known vulnerabilities.
+- Revalidated Executive, accessibility, theme, keyboard navigation, complete workspace discoverability, and the scanner regression suite.
+- Added a 480px responsive Nexus monogram asset for mobile; constrained All-page LCP improved from 4,024 ms to 3,220 ms while preserving the full-resolution desktop artwork.
+- Added a public-brand-only HTML entry shell for anonymous cold starts, eliminating the blank screen before React authentication loads without changing the auth gate. Production mobile cold-login LCP measured 1,616/1,804/1,892 ms with CLS 0.
+- Published the verified release to `nexus-lemon-eight-32.vercel.app` as deployment `dpl_H4sB9aTMVoxqPzXYjkzKz7nQt38F`.
+- Included DataLens in the executive release gate and deployed `dpl_HU4sTZxuj5AGS4JpF42N8q9mvNJK` to `datalens-kappa-one.vercel.app`; production smoke now verifies its authentication boundary and security headers.
+
+## 2026-09-08 — Restore complete workspace navigation
+
+- Removed the Simple/Pro presentation filter that made established Main workspaces appear to be missing.
+- Restored all 25 finance, trading, investment, productivity, security, schedule and health destinations to desktop and mobile navigation without changing user data or route behavior.
+- Added a Playwright regression check that verifies every workspace link remains visible on desktop and in the mobile More menu.
+- Corrected three low-contrast destructive-action states found during the restoration audit.
+
+## 2026-09-08 — Biometric state recovery after updates
+
+- The native lock screen now reconciles its WebView flag with Android Keystore after an update, restoring fingerprint unlock when the protected credential is still present.
+- A recovered credential is removed only if biometric authentication succeeds but its stored PIN no longer matches the device's current App Lock PIN.
+
+## 2026-09-08 — Stable PIN unlock during deployments
+
+- Fixed a cross-tab race where a correct PIN could be reported as incorrect if All or Main published a new lock generation while the app was performing encrypted-key derivation.
+- A verified PIN now acknowledges the newest lock generation atomically; any genuinely later lock signal still takes effect immediately.
+
+## 2026-09-08 — Automatic on-device slip scan
+
+- Nexus Main now checks the Android gallery for new slip QR images automatically when the Transactions page opens.
+- Gallery permission is requested once; later checks run without requiring bank or date selection.
+- Incremental scan cache and Smart Import duplicate checks prevent old images and existing transactions from being imported twice.
+- Detected entries still open in Import Preview before they are committed, so uncertain OCR results cannot silently change the ledger.
+
+## 2026-09-08 — QR device unlock
+
+- Added a two-minute, one-time QR flow for unlocking a desktop from an already-unlocked Android device.
+- Added live in-app camera scanning with deferred loading so the All workspace stays fast.
+- Added end-to-end AES-GCM key transfer and same-account row-level security; PINs remain device-local.
+
+## 2026-09-01 — audit remediation
+
+- Synchronized same-origin PIN locks and invalidated stale remembered tab sessions; clear other tabs' in-memory DEKs without broadcasting secrets.
+- Corrected selected command-group contrast using the shared action foreground.
+- Restored anonymous Tools local utilities while retaining private cloud identity/MFA authorization.
+- Repaired exact control selectors, local-date budget fixtures, login build configuration and isolated performance execution; added auth/login/performance CI steps.
+- Applied compatible dependency security patches and synchronized the current access/security documentation. Validation and production references: [AUDIT_REMEDIATION_2026-09-01.md](AUDIT_REMEDIATION_2026-09-01.md).
+- Closed the follow-up audit findings: remembered fresh tabs now obey Main's idle timeout; login fonts no longer compete as critical preloads on constrained first visits; the authenticated All layout suite is current and wired into CI; Tools performance checks run separately with one Chromium worker.
+- Installed the unified Android launcher on device `V2348`: native cold launch reserves `/` for Nexus All while explicit Main routes retain their existing PIN gate. Latest web assets were synced into the existing debug native shell, aligned, signed with the same debug certificate and installed with `adb install -r` so app data was preserved.
+
+- Unified the Trading Dashboard and Journal behind a responsive Trading workspace header inspired by the standalone `Trading_journal` prototype: Dashboard/Journal/Analytics navigation, live trade-count and total-P/L context, and a clearly grouped analytics surface. The implementation reuses Nexus's existing synced Trade model, stores, drawers, charts, filters, CSV export, risk controls, and analytics hooks rather than importing the prototype's single-file/localStorage architecture.
+- Narrowed the remaining synchronous AI Analytics hooks: `useWhatIfScenario` now selects five data collections and `useCategoryDetail` selects three, preventing unrelated store state from re-running either calculation; both have render/result-identity regression coverage.
+- Narrowed `useFinancialAnalysis` to its six actual input collections, preventing unrelated store state changes from re-running the full analysis engine; regression coverage locks both render count and engine call count.
+- Narrowed `useFinancialHealthTrend` to its five data collections so unrelated store loading/error/action changes no longer trigger another six-point scoring pass; added a render-identity regression test and corrected the stale Global Search dependency note.
+- Released Nexus `v0.1.0` from commit `b1efa21`: the annotated tag and `main` were pushed to GitHub, the GitHub pre-release was published, and CI run #87 passed. This is the project's first semantic release.
+- Reconciled documentation with the current implementation: PERF-003 is now accurately recorded as reference-time alignment (not computational deduplication), the Claude AI Coach fallback is no longer described as future work, test totals are current, and stale Roadmap commit-date claims were removed.
+- Reduced `TopBar` startup work from 11 eager store loads to the 2 collections required by always-visible notifications; `GlobalSearch` now loads its other 9 searchable collections once on first focus.
+- Narrowed `useGlobalSearch` subscriptions to the searchable collection in each of its 11 stores, preventing unrelated loading/error/action state changes from re-rendering and recomputing global search; regression-tested with an unrelated transaction-store update.
+- Clarified the dual health-calculation boundary without changing results: recommendation rules now consume explicitly named `ruleHealthSignals`, while the weighted `financialHealthScore` remains the sole UI/reporting score; the legacy public `healthScore` field is retained and deprecated for compatibility.
+
+**Last Updated:** 2026-09-08
+
+## Overview
+
+This changelog is reconstructed directly from `git log`, grouped into milestones rather than listed commit-by-commit. Nexus now uses semantic versioning beginning at `0.1.0`; versions below `1.0.0` remain development versions and may include breaking internal changes.
+
+## Current Version
+
+`0.1.0` (package.json/package-lock.json) — first semantic development version; not yet tagged or published.
+
+## Timeline
+
+The full commit history spans **2026-07-25 to 2026-08-22**, with the AI Analytics module and several other major features landing on 2026-08-01 alone, Gallery Scanner/Payment Notification Capture/Vault/Workout Tracker/sync hardening work concentrated in the 2026-08-15 to 2026-08-18 window, a full architecture review's refactoring order (sync perf, Drawer a11y, appLockStore slices, PLAINTEXT_KEYS, Disable Encryption) worked through on 2026-08-18/19, and Reports/Deeper Trading Analytics/the Executive Dashboard Foundation (EXEC-001)/a Tier 1-3 backlog cleanup pass/two-factor authentication + Login History/email OTP sign-up verification/the AI Gateway's Claude wiring/a redesigned Login screen/a weekly-digest automation landing 2026-08-20 through 2026-08-22.
+
+## Major Milestones
+
+### Cross-device deletion consistency (2026-09-08)
+- Fixed a delete/edit conflict where a stale desktop copy could resurrect a row deleted on mobile when the desktop clock appeared newer. Server tombstones are now terminal for the original `syncId`, enforced in both the sync client and the live Supabase trigger; a newly created item still receives a fresh identity. Added a clock-skew regression test.
+
+### Finance-first product foundation (2026-09-08)
+- Added persisted Simple and Pro experience modes in Settings. Simple mode narrows desktop and mobile navigation to everyday finance, goals, tasks, and habits; Pro remains the default and exposes every existing workspace. Switching modes never changes or deletes data.
+- Defined the initial commercial audience, product positioning, pilot metrics, research protocol, release gates, and candidate paid-value hypotheses without claiming product-market fit or approved pricing.
+- Added privacy and terms scopes grounded in the current local-first, optional-sync architecture and explicitly marked them for Thai legal review before public use.
+
+### Validation baseline and concurrent-test stabilization (2026-08-29)
+- Verified production Build/TypeScript and oxlint clean; the initial build exposed a shared-chunk size warning that was resolved in the bundle-splitting step below.
+- Stabilized the full orchestrated Slip Scanner integration by asserting the concurrency-safe invariant (one of two byte-identical assets survives) instead of assuming a particular worker wins the content-hash reservation race.
+- Stabilized Recipient Learning integration coverage by waiting for its intentionally asynchronous best-effort profile update and assigning a test-local integration timeout.
+- Verified the final accumulated working tree with 436/436 Vitest files (2,740/2,740 cases) using four workers and 76/76 Playwright E2E cases in Chromium.
+- Analyzed and split the shared entry bundle into stable React, Router, Motion, and cloud vendor groups. The entry chunk dropped from about 824 kB to 134 kB minified, the large-chunk build warning cleared, and 76/76 Playwright cases passed again against the split production output.
+- Split the 5,209-line bilingual translation dictionary into six domain modules while preserving the public `translations[language]` object and all existing key paths. EN/TH parity coverage now also asserts the complete 40-namespace surface, preventing a namespace accidentally removed from both languages from escaping parity checks.
+
+### Foundation (2026-07-25)
+- Initial commit (`26abcb9`).
+- Cloud sync sign-in requirement added when Supabase is configured (`aa266c1`).
+- Early mobile-layout and cross-device sync data-mismatch fixes.
+
+### Encryption-at-rest, staged rollout (2026-07-25, `6220551` → `c0688cd`)
+Shipped as 8 explicitly-staged commits: crypto primitives + session key + repository plumbing (Stages 0-3) → Enable Encryption migration (Stage 4) → Forgot PIN recovery flow (Stage 5) → Settings UI (Stage 6) → backup service compatibility (Stage 7) → sync engine opaque-blob regression test (Stage 8) → server-side `user_encryption_keys` table + RLS. See [SECURITY.md](SECURITY.md) for the full design this shipped.
+
+### Sync engine hardening (multiple dates)
+A cluster of fixes addressing real cross-device race conditions as they were found: resurrected-deleted-rows on refresh, duplicate-`syncId` Postgres errors (two separate root causes, fixed in two separate commits), edits/deletes silently reverting when two devices synced near each other, and a speed-up from a 30s to a 5s sync interval (later re-confirmed/re-enabled after a regression).
+
+### Life Modules (2026-07-26 onward)
+- Habit Tracker — v1.0 scope, first Life Module (`0835933`, 2026-07-26).
+- Portfolio — v1.0 scope, second Life Module (`28ba7eb`).
+- Calendar — v1.0 scope, third Life Module (`79e9018`), later **replaced** by Life Schedule (see below) — this is why `src/features/calendar/` survives today only as an orphaned type declaration (see [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md)).
+
+### App Lock & biometrics
+- Fingerprint unlock added as a supplementary alternative to the PIN.
+- A device-crash fix for weak-class biometry (`isBiometricAvailable()` now checks `strongBiometryIsAvailable` specifically).
+- A `patch-package` patch applied to `@capgo/capacitor-native-biometric` to fix a crash on every device — still applied on every `npm install` via `postinstall`.
+
+### UX and platform polish
+- A 4th "Mono" theme added, Login screen redesigned (twice — once for a "more premium look").
+- Sentry error monitoring added (optional, `VITE_SENTRY_DSN`-gated).
+- `TransactionDrawer`/`TradeDrawer` lazy-loaded, cutting the main bundle ~15%.
+- PWA service worker registration skipped inside the Capacitor native WebView specifically to avoid serving a stale bundle after an APK update.
+- Merge Duplicate Transactions added to Settings; Settings reorganized into clear groups with "Reset All Data" isolated in its own danger zone.
+
+### Life Schedule replaces Calendar, Reminders subsystem added (2026-08-01, `5e38594`)
+Calendar's dated-event UI was retired in favor of a recurring daily-routine timeline (Life Schedule), and a shared native-notification `reminders/` module was added, consumed by both Habits and Schedule. Same commit made form validation messages translatable and fixed local-date handling app-wide.
+
+### Dashboard refactor + Goal Milestone Events (2026-08-01, `cc9ca4d`)
+Dashboard rebuilt around real per-module preview panels (Budget, Habit, Portfolio, Schedule, Todo, Trading); Goal Milestone Events (25/50/75/100% crossing log) added to the finance module.
+
+### AI Analytics — the largest single feature (2026-08-01, `5a9b896`)
+One commit introducing the entire local, rule-based AI Analytics engine: Financial Health Score, Rule Engine (~46 rules), Recommendation Engine, Behavior Analysis Engine, Forecast & Trend Engine (with an interactive What-If simulator), Executive Summary Generator, AI Coach (16-intent Q&A), and the AI Gateway (`src/ai/`) — a designed-but-intentionally-unwired seam for a future real LLM provider. See [AI_ANALYTICS.md](AI_ANALYTICS.md) for the full architecture and the Sprint 1 status audit (P001–P011, all 11 pieces completed except the Gateway's integration).
+
+### AI Analytics UI completion + consolidation (2026-08-01 → 2026-08-02)
+- Forecast, What-If, and Executive Summary UI panels built to surface engine data that initially had no UI (`e58995f`).
+- Duplicated math consolidated (clamp, coefficient-of-variation, percent-change helpers), dead code removed, health-score UI reconciled onto a single card (`3ad5f34`).
+- Hardcoded-language strings fixed across notifications, insights, and encryption flows (`eab941f`).
+- Global Search expanded to every entity type, and the resulting `TopBar` re-render regression fixed with narrow selectors + `memo()` (`9c8bc3c`).
+- Recommendations section consolidated onto the richer `ActionableRecommendation` model (`55bc651`).
+- Repository/service CRUD factories extracted, dead `ComingSoon` page removed (`4a84fd1`).
+- Sync engine merge safety hardened: malformed-row guard + last-write-wins (`3909f1b`).
+- Small info tooltips added to Dashboard cards/charts, translation strings updated (`47455b2`, `4e9adb7`).
+
+### Documentation, task system, and AI Analytics quality passes (2026-08-07)
+The `/docs` documentation set and a file-based `tasks/` registry (previously untracked working-tree artifacts) were committed, followed by four scoped AI Analytics passes — each output-preserving, with no change to financial calculations:
+- **A11Y-001** — screen-reader and keyboard accessibility for the AI Analytics charts: a shared `ChartFigure` (`role="img"` + a data-driven `aria-label`) wraps every Recharts chart and the CSS-grid heatmap/calendar, the decorative merchant sparkline is hidden from assistive tech, and the recommendation disclosure gained `aria-expanded`/`aria-controls`. No visual change (`4134a56`).
+- **PERF-001** — `monthlyValuesFor` rewritten as a single pass over transactions (O(months×N) → O(N)) with byte-identical output (`088f3ac`).
+- **PERF-002** — a lean `computeHealthScoreSummary` lets score-trend points skip the explanation aggregation they discard; the full health score is unchanged (`ebc9f85`).
+- **UX-001** — the AI Analytics error retry re-runs the analysis in place via a new `useFinancialAnalysis().retry()` instead of `window.location.reload()`, leaving all state outside the module untouched (`754a98f`).
+- **UX-002** — hardened that retry: a synchronous engine throw now surfaces as an error state (the `analyze()` call is routed through `Promise.resolve().then(...)`) instead of hanging on `loading`, and retry re-fetches the finance stores before re-analysing (`86df606`).
+- **A11Y-002** — a second accessibility pass: a global keyboard `:focus-visible` ring (`index.css`), a shared visually-hidden `ChartDataTable` exposing the key charts' numbers (score radars, health trend, monthly cash flow) to screen readers, a no-behaviour-flags empty state, and an `overflow-x-auto` wrapper on the desktop merchant table (`34acf5b`).
+
+### Gallery Slip Scanner — foundation (2026-08-07 → 2026-08-08, `GS` epic, in progress)
+A new, fully plugin-agnostic Gallery Slip Scanner is being built out under its own `GS` epic (the `MASTER_TASK.md` program, renumbered to avoid colliding with the existing `OCR-001…007`). Local commits, **not yet released**:
+- **GS-005** — gallery permission manager spanning Android 13/14/15 + web, behind a `registerPlugin` native contract that degrades gracefully until an on-device media plugin is wired; `READ_MEDIA_IMAGES`/`READ_MEDIA_VISUAL_USER_SELECTED` manifest permissions (`3a3ba6e`).
+- **GS-006** — plugin-agnostic scan orchestration: a `MediaProvider` interface with a web file-picker provider + a native stub, driving scan-all, incremental skip, duplicate prevention, progress, pause/resume/cancel, cooperative backgrounding, and resumable session persistence (Dexie v15) (`286adbf`).
+- **GS-007** — concurrent scan queue: N self-balancing workers pulling lazily from the provider (the source is the backpressure), bounded retries with backoff, and a `ByteBudget` semaphore capping in-flight image bytes (memory protection + dynamic batching) (`c9b35e1`).
+- **GS-008** — production scan cache (Dexie v16 `slipScanCache`) behind an injectable `ScanCache` interface: versioned entries (OCR/payload/parser) for staleness, skip-unchanged / re-scan-changed / re-scan-stale, a remembered-failure cross-run retry policy, and invalidation.
+
+The extraction pipeline and its supporting layers then landed (2026-08-08, GS-009 → GS-022), each behind swappable interfaces so nothing is coupled to a plugin or a backend, and each validated (tsc/lint/build + a growing test suite, 159 slipScanner tests by GS-021):
+- **GS-009 → GS-013** — the extraction engine: a plugin-agnostic QR detector (jsQR isolated behind a `QrDecoder` seam), an EMVCo/PromptPay TLV payload parser with CRC-16 integrity, plugin-based bank identification keyed on the real Bank of Thailand codes, an OCR fallback that *reuses the existing Tesseract engine* and runs only when the QR is missing/damaged, and slip-level duplicate detection (same transaction across different images).
+- **GS-014, GS-015, GS-016** — the import flow: a pre-scan bank-selection popup (remembered selection, search, estimates), the unified `SlipCandidate` model + Import Preview (thumbnail/bank/amount/date/time/merchant/duplicate/confidence, filter/search/select), and Smart Import (batch with per-item progress, error recovery, cancel/resume, and rollback), reusing the existing `transactionService` — no new data path.
+- **GS-017 → GS-020** — cross-cutting: scanner security (permission/import audit log, secure deletion of thumbnails/decoded bytes, CRC-based tamper detection), performance metrics, deterministic (never-mutating) AI validation, and cross-run analytics.
+- **GS-021, GS-022** — critical-path integration + stress/memory tests, and this module-wide review checkpoint.
+
+**Live wiring (2026-08-08)** — the scanner is now user-facing on web: a **"Scan Gallery"** button on the Transactions page (`GalleryScanFlow`) drives the full flow — bank selection → image picker → real jsQR + Tesseract extraction (`extractSlipCandidate` + `useSlipScan`) → Import Preview → Smart Import into transactions. The native gallery path uses `@capacitor/camera`'s `pickImages` (guarded, dynamically imported), wired but pending `npx cap sync android` + an on-device test. Full-gallery *auto*-enumeration (the `NativeMediaProvider` / MediaStore path) remains a stub — today's shipping path is the picker, not whole-library auto-scan. See [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md)'s GS epic.
+
+**Refinement engines (2026-08-08, GS-023 → GS-040)** — a second wave of scanner engines, each behind swappable interfaces / pure logic and validated per task: a battery/charging-aware **smart scan scheduler** (GS-023), an **image hash engine** (SHA-256 + DCT perceptual hash, GS-024), a **slip validation engine** with per-field validity + confidence (GS-025), a **QR recovery engine** that retries over rotate/brighten/contrast/upscale variants (GS-026), **image enhancement** that preprocesses only when needed (GS-027), a per-field **OCR text engine** with confidence (GS-028), a **slip classifier** (GS-029), a plugin-based **bank template engine** (GS-030), a graded-probability **smart duplicate engine** (GS-031), an **import conflict resolver** (replace/skip/merge/keep-both, GS-032), a general **background worker** (GS-033), a **scan-progress dashboard** (GS-034), **import history** (Dexie v17, GS-035), a **performance monitor** (GS-036), a crash/interruption **recovery system** (GS-037), a **security audit** layer (GS-038), and dev-gated **developer tools** (GS-039) — reviewed at the **GS-040** production-readiness checkpoint.
+
+**AI/intelligence layers (2026-08-08, GS-041 → GS-050) — completes the GS epic (50/50).** All deterministic, local, and advisory (never mutating imported data): AI slip verification (QR↔OCR consistency → authenticity/confidence/risk), fraud detection (Low/Medium/High + reasons), transaction categorization with local learning, merchant intelligence (alias/chain merge + frequency), a smart learning engine (merchant/OCR/bank corrections), a confidence engine (combines QR/OCR/parser/bank/AI), transaction linking (refund/fee/installment/split/cashback), spending intelligence (top category / trend / abnormal expense), AI quality review, and a financial intelligence report (JSON/CSV; PDF via the existing jspdf infra). ~297 slipScanner tests.
+
+**Platform epic (2026-08-08, PLT-001 → PLT-020).** Per the reuse rule, only the genuinely-new frameworks were implemented under `src/platform/` — Event Bus, Feature Flags, Command Palette (global Ctrl+K, mounted in `MainLayout`), and Local Telemetry (never sends data online) — with 21 tests; the remaining PLT items are satisfied by existing app/GS systems (Global Search, AI Gateway, import/export, notifications, settings, audit, AI memory, background worker) or specified design-only (Plugin SDK), documented in [../tasks/Platform/PLATFORM_DESIGN.md](../tasks/Platform/PLATFORM_DESIGN.md). Certified at PLT-020. Remaining forward work: full-gallery native auto-enumeration and on-device verification of the native picker.
+
+### Gallery Slip Scanner — post-launch stabilization (2026-08-08 → 2026-08-11)
+With the GS (50/50) and PLT (20/20) epics complete, the native picker was verified on a real device and the scanner was run against real Thai bank slips, surfacing bugs that landed as they were found, then two code-review passes over the whole pipeline:
+- **On-device bug-fix round** (`a71d6cb`, `343f162`, `9d95994`, `7b9013f`, `ee45134`, `1e59da6`, `dfcc096`) — a QR-decode canvas fallback for Android WebViews without `OffscreenCanvas`; an amount-extraction bug picking the wrong number off a slip ("20 → 520"), fixed by anchoring to a currency marker/label; "Unknown bank" on real slips (completed Thai slips carry a slip-*verification* QR, not an EMVCo payment QR — added OCR-text bank identification, earliest-keyword-wins); imported-row quality (title/category/grammar); full-resolution gallery image picking for OCR; and merchant extraction extended from shop-keyword matching to positional extraction, so label-less e-wallet/person payees (e.g. a PromptPay/G-Wallet top-up) resolve correctly instead of falling back to the bank name.
+- **Code-review pass 1** (`dbe4ca2`) — a 10-agent parallel review found and fixed: `identifyBank()` could never match a real (non-PromptPay) bank from EMVCo (no GUIDs were ever populated) — now falls back to OCR text when EMVCo leaves the bank unresolved; the category-learning store was fully disconnected from import — wired (read side), with the guessed category now validated against the user's live category list; a `??`/`||` inconsistency broke category fallback on an empty merchant; OCR preprocessing hard-binarised every image unconditionally (could wipe an overexposed slip to blank) — now runs adaptive brightness/contrast correction first; the QR recovery engine (GS-026) and OCR fallback (GS-012) were built and tested but never called from production — wired in; a shared `engine/image/canvas.ts` replaced three drifted copies of the same canvas-fallback/luma code; several `slipParser.ts` edge cases (a date regex that could fabricate a year from an account number, an overly strict account-line pattern, a payee's bank-name line captured as their name).
+- **Code-review pass 2** (`ec75eff`) — a second review of pass 1's own diff caught regressions it introduced: OCR-derived date/time discarded when OCR ran only to resolve the bank; the newly-wired QR recovery had no error handling, so a canvas failure could abort a whole gallery batch; a redundant re-decode in QR recovery; `imageEnhancer.ts` not yet using the shared canvas helper (so adaptive enhancement silently no-opped on exactly the WebViews it exists for); an account-line pattern broad enough to match an unrelated phone number; a `META_LINE` word that could false-skip a real name.
+
+Full test suite: 159 slipScanner tests at the GS-022 checkpoint → ~297 at GS-050 → 2039 project-wide today. See [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md)'s "Gallery Scanner — Post-Launch Stabilization" section for the detailed per-round notes.
+
+### Slip Intelligence — closing the "built, tested, never wired" gaps + native full-gallery plugin (2026-08-15, 10 commits, `79e9c24` → `d092800`)
+A System-Architecture-Review-style audit of the scanner found a consistent pattern across half a dozen modules: real, fully-tested engines (`combineConfidence`, `smartDuplicate`, `conflictResolver`, `recoverySystem`, `importHistoryRepository`, `hashImage`/pHash) with zero production call sites, plus two entirely separate, never-integrated scan pipelines — the live picker flow (`useSlipScan`, sequential) and a concurrent, byte-budgeted, resumable orchestrator (`scanSessionService` + `runConcurrentQueue` + `ByteBudget` + `dexieScanCache`, GS-006/007/008) that only ever ran a no-op processor. Nine phases closed these gaps:
+- **Phase 1** (`79e9c24`) — `slipExtractionProcessor.ts` wraps `extractSlipCandidate` as a real `ScanProcessor`, proven end-to-end against the orchestrator by a new integration test; fixed a genuine concurrency bug found while writing it (`scanSessionService`'s content-hash dedup could mistake a retry of a failed asset for a duplicate of itself).
+- **Phase 2** (`d82c19c`) — wired the orphaned engines into production: `slipCandidate.ts`'s confidence score now calls the real Confidence Engine (previously a transparent `basicConfidence` heuristic); `useSlipScan` layers the graded Smart Duplicate signal (pHash-based) on top of exact-match dedup; `smartImport.ts` runs `resolveConflict` against existing transactions before importing (via a new `referenceFromNote()` heuristic, since `Transaction` has no structured reference field); `useSmartImport` now writes to `importHistoryRepository` (previously never called in production); a `ScanRecoveryNotice` surfaces `recoverySystem`'s resumable-scan / failed-import detection on app start.
+- **Phase 3** (`a90879f`) — a confidence-tier policy (`high`/`medium`/`low`/`critical`, the last overriding on a missing/non-positive amount) drives Import Preview's default selection (previously "everything non-duplicate") and a colored tier badge.
+- **Phase 4** (`4e5e55f`) — bumped the scan-cache engine versions from placeholder `"0"` to real values, with a comment documenting when to bump each going forward.
+- **Phase 5** (`1396206`) — checkpoint writes during a scan are now throttled (every 2s or 50 items) instead of one Dexie write per image, verified at 10k images (see the Phase 9 stress test below).
+- **Phase 6** (`b08dab8`, `b454751`) — closed the category-learning UI gap: `SlipCandidate.category` is a Review Queue override field, a new `ReviewEditForm` lets a person correct amount/merchant/category per candidate in Import Preview, and saving a category that matches one of the fixed keyword-based categories now actually calls `categoryLearningStore.learn()` (previously only its own test did). Also shipped Import History as a real Settings screen (search + status filter over the log Phase 2 started writing).
+- **Phase 7** (`6393b5e`) — threaded a real `ScanProcessor` through `useScanStore`/`useGalleryScan` (previously hardcoded to a no-op) and added `useFullGalleryScan` + `FullGalleryScanPanel`: the concurrent orchestrator driving real extraction with a live `ScanProgressDashboard` (percent/ETA/qrDetected/ocrProcessed) and working pause/resume/cancel — built and tested, but deliberately left with no live nav entry point pending Phase 8. Caught and fixed a real bug while testing it: `useScanStore` is a module-level singleton, so a freshly mounted panel could inherit an already-"completed" status left over from a previous scan and fire its completion callback with zero candidates before ever scanning; fixed by tracking status *transitions* instead of the current value.
+- **Phase 8** (`d6ba252`) — implemented `GalleryMediaPlugin.java`, a real native Android plugin (Java, matching the project's existing all-Java Android code rather than introducing a Kotlin toolchain) backing both the gallery-permission contract declared since GS-005 and new MediaStore `count`/`page`/`readBytes` methods that `NativeMediaProvider.ts` (previously a zero-assets stub) now calls for real. Pagination and the incremental cursor are keyed on `DATE_ADDED` rather than `DATE_TAKEN` (frequently null for screenshots/downloads) — insertion time, not capture time, is what "have I already scanned this" actually needs. Compiles against the real Capacitor 8.4.2 Java sources and packages into a working debug APK; **not yet validated on a physical device** (none was connected this session) — left unwired from live navigation for that reason.
+- **Phase 9** (`d092800`) — hardening: a stress test proves `ByteBudget` is a real, independent memory limiter (not just the concurrency setting) at a realistic 4MB image size, and a 10k-image run confirms checkpoint throttling holds at scale; a seeded-PRNG fuzz test drives ~8,000 malformed/TLV-shaped-but-corrupted strings through the EMVCo payload parser and OCR field extractor (the two parsers that run on untrusted image-decode output) with zero crashes.
+
+See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for what these phases left open (native plugin device validation, `FullGalleryScanPanel`'s missing nav entry point, and the orchestrator path's not-yet-implemented same-batch dedup).
+
+### Gallery Scanner — real-device verification, live wiring, and a speed investigation (2026-08-15 → 2026-08-16)
+- **Architecture verification** (`effe778`, `68b73a7`) — proved the full scan-to-history chain (orchestrator → extraction → Import Preview → Smart Import → Import History) is actually connected end to end, not just individually tested, and documented the exact device-validation procedure to use going forward.
+- **Live wiring + real-device tap-through** (`925df43`, `702cd70`, `0c98712`) — connected `FullGalleryScanPanel`'s orchestrator to the real "Scan Gallery" button (previously built and tested but with no live nav entry point); fixed a real pagination bug only a physical device could surface (`GalleryMediaPlugin.page()`'s `LIMIT`/`OFFSET` SQL threw `IllegalArgumentException` on-device despite looking portable); then physically tapped through the entire flow — button → bank popup → live progress dashboard → Import Preview → import — against a real ~2,500-image gallery, closing the one gap the previous documentation pass had left open.
+- **Gallery-scan speed investigation** (`e26c0a5` → `9f056cc`, ~20 commits) — a real, reproducible slow-scan complaint drove a systematic perf pass: reusing a small Tesseract worker pool instead of spinning up one worker per image; fixing "Cancel" appearing unresponsive mid-scan; bounding QR-recovery's variant resolution (was unbounded, a catastrophic-case bottleneck) and switching its variants to JPEG; per-stage perf instrumentation to find the next bottleneck at each step; resizing images during QR/analysis decode; merging `enhance` into `preprocessForOcr` to cut a redundant pass; **two encode/decode round-trip eliminations that were each *reverted*** after further investigation — one (QR recovery) confirmed safe and kept, the other (OCR preprocessing) found to have a fixed ~4.1s `convertToBlob` floor unrelated to the intended fix, and a follow-up BMP-encoder experiment for OCR was itself reverted back to PNG after being confirmed to regress real-slip OCR accuracy in testing. Also: `extractSlipCandidate` now treats OCR failure as best-effort (matching QR recovery's existing tolerance) and skips OCR entirely for whole-gallery-scan photos with no QR signal at all.
+- **Misc fixes**: backup exports now save via the native Android share sheet instead of a broken direct-download path (`2e980fa`); duplicate detection now bridges a date-only timestamp against a date+time one instead of treating them as different transactions (`4781e64`); a leftover service worker is now unregistered defensively on native builds (`c1e58b9`).
+
+### Payment Notification Capture (2026-08-16 → 2026-08-18)
+One-tap transaction entry from a recognized banking app's own payment notification, without opening Nexus. A `NotificationListenerService` watches for notifications from an allow-list of package names only, reads just the amount and counterparty text, and stashes a pending candidate that surfaces as a confirm sheet (`PendingPaymentSheet`) on next app open — reusing the same `SlipCandidate` model and Smart Import pipeline every other import path already uses.
+- **Phase 1** (`2963e86`) — SCB Easy, K PLUS, Krungthai NEXT recognized; amount/counterparty regex parsing (currency-anchored, more conservative than the full-slip OCR parser since a terse notification has far less context); the one-tap confirm sheet.
+- **Real-device validation and package-name fixes** (`3c8ebc9`, `94c6a72`, `8ff7545`) — confirmed end-to-end against a real K PLUS payment; corrected Krungthai NEXT's package name (the initial guess, `com.ktb.next`, was wrong — the real one is `ktbcs.netbank`, and `com.ktb.customer.qr` turned out to be เป๋าตัง, not NEXT); added เป๋าตัง (Pao Tang) as a fifth-turned-fourth recognized app.
+- **A real build-breaking bug, caught only at Gradle assembly** (`081dfdc`) — an `AndroidManifest.xml` comment used `--` inside an XML comment (invalid per spec), passing every earlier check (`tsc`/`oxlint`/`vitest`/`npm run build`) and only failing `:app:processDebugMainManifest`.
+- **Confirm sheet: rename + category picker** (`8e111b1`) — an editable name field (defaults to merchant, else bank name) and category chips, dropping a redundant bank-name-only note.
+- **Income/expense type selection** (`6dde569`) — a bank notification isn't always an outgoing payment, but every candidate previously imported as a hardcoded expense. Added an expense/income toggle to the confirm sheet (category chips now filter by whichever type is selected); found and fixed a real bug live on-device in the same pass — the categorizer's guess is expense-oriented, so an income candidate left uncategorized was silently getting an expense-shaped category name; both the sheet's chip-highlight guess and the actual import guess now skip entirely for income, leaving it genuinely uncategorized instead of wrong.
+
+### Vault — passwords, secure notes, recovery keys (2026-08-17, `0933529`, VAULT-001..004)
+An encrypted password manager built on the app's existing client-side encryption primitives — one unified `VaultEntry` model (a `type` discriminator over password/note/recoveryKey) rather than three parallel CRUD verticals. Gates the entire page behind `encryptionEnabled === true`, showing the existing "Enable Encryption" form instead of a list when it's off, so "Vault access" and "encryption is on" are equivalent by construction. Reuses the transparent `createEncryptedRepository` wrapping every other table already uses, with zero fields exempted from encryption (unlike some other tables, even the entry title is sensitive here). Verified on-device: created one entry of each type, confirmed the raw IndexedDB row contains only `id`/`syncId`/`updatedAt`/`encryptedContent` — no plaintext anywhere.
+
+### Audit Log — SEC-002 (2026-08-17, `a387f25`)
+Made the Gallery Scanner's existing but dormant audit-log mechanism (built, tested, never wired to storage or called outside scanner code) real and app-wide: relocated to `src/features/security/`, widened from six scanner-only event categories to also cover auth/encryption/lock/vault/backup, backed by a new persisted `auditLog` Dexie table wired at app bootstrap. New call sites across `authStore`, `enableEncryption`/`reescrowDek`, `appLockStore` (including failed unlock attempts — successful unlocks are deliberately not logged, to avoid noise), `vaultEntryStore` (entry type only, never content), and `backupService`. Found and fixed a real, unrelated bug while wiring backup events: `vaultEntries` was silently excluded from the app's own export/import/reset, contradicting Vault's own plan. Viewer: a search + type-filter drawer in Settings > Security & Sync.
+
+### Workout Tracker (2026-08-17, `db65045`, WORKOUT-001..004)
+A Strava-inspired workout logger: an exercise catalog (calorie rate, optional YouTube demo link) and a separate entry log (reps/rounds/duration/distance/route — modeled after Category+Transaction, not Habit's single-table shape, since a workout logs multiple sets per day rather than checking in once), a work/rest interval timer with haptic feedback, and real GPS route tracking (`@capacitor/geolocation` + Leaflet/OpenStreetMap, no API key). Both the timer and GPS tracker are plain hooks holding ephemeral UI state, not Dexie-backed — explicitly foreground-only, no background service. Verified live on-device including a genuine indoor WiFi-based GPS fix rendering a real live route on the map.
+
+### Gallery Scanner: date-range scanning (2026-08-17, `fddf66c`)
+Adds a from/to date picker to the existing bank-selection popup, with a live pre-scan count estimate (the same native query that will drive the actual scan). A date-range scan is deliberately non-resumable and excluded from the normal incremental scan's cursor/resume lifecycle — closing a real hazard found during design, not just implementation: a paused date-range run being picked up by a later unrelated normal scan's resume logic, corrupting its cursor. Verified live on-device including an exact numeric match between the pre-scan estimate and the actual scan's total.
+
+### Sync engine — a second hardening round (2026-08-17 → 2026-08-18, `1b6fd60` → `11727b9`)
+A real cross-device data mismatch (a transaction present on the desktop but never reaching the phone) was traced — not assumed — through several layers of evidence to a specific root cause: `pullTable()`'s cursor-advance nudge could push a device's own push cursor past a local, not-yet-pushed row whenever a row pulled from another device had a newer `updatedAt`, silently excluding that local row from every future push with no error ever surfaced (`1b6fd60`, reproduced with a failing test first). That fix stops new corruption but doesn't repair cursors already left stuck by the old behavior on an existing install — closed by a one-time, per-device self-healing migration (`1c84a16`) that clears every `push:<table>` cursor exactly once. Reconsidered rows are now protected by the database live-version guard and terminal tombstones. Separately, duplicate account/category records left behind whenever two devices each seed their own defaults before ever syncing (undetectable by the existing syncId-based dedup, since they're genuinely different syncIds for the same real-world thing) now merge automatically on every sync pass (`11727b9`) instead of requiring a manual "Merge Duplicates" button press.
+
+### Documentation sync + two real Workout Tracker gaps found and fixed (2026-08-18)
+A full `/docs` sync pass (this document, README, ROADMAP, TECHNICAL_DEBT, TASK_REGISTRY, MODULES, DATABASE_SCHEMA, SECURITY, TESTING_GUIDE, PROJECT_ARCHITECTURE, STATE_MANAGEMENT, ROUTING, COMPONENT_LIBRARY, DEPENDENCY_GRAPH, PROJECT_TREE) verified every doc against current source and closed the gap left by 51 commits since the last sync. While cross-checking every recently-added table against every table-enumerating file in the codebase, found two real, previously-unnoticed bugs from when the Workout Tracker (v20 schema) shipped: `workoutExercises`/`workoutEntries` were silently excluded from `backupService.ts`'s export/import/reset (the same class of gap already fixed once for `vaultEntries`), and missing from `enableEncryption.ts`'s migration table list entirely (a pre-existing workout row would never get encrypted when a user enabled encryption). Both fixed, with a third, unrelated pre-existing test-isolation bug found and fixed along the way — a hand-duplicated, already-stale table list local to `enableEncryption.test.ts` was silently leaking encrypted rows between tests.
+
+### Documentation sync — two real Workout Tracker gaps found and fixed (2026-08-18)
+A full `/docs` sync pass verified every doc against current source and closed the gap left by 51 commits since the last sync. While cross-checking every recently-added table against every table-enumerating file in the codebase, found two real, previously-unnoticed bugs from when the Workout Tracker (v20 schema) shipped: `workoutExercises`/`workoutEntries` were silently excluded from `backupService.ts`'s export/import/reset (the same class of gap already fixed once for `vaultEntries`), and missing from `enableEncryption.ts`'s migration table list entirely (a pre-existing workout row would never get encrypted when a user enabled encryption). Both fixed, with a third, unrelated pre-existing test-isolation bug found and fixed along the way — a hand-duplicated, already-stale table list local to `enableEncryption.test.ts` was silently leaking encrypted rows between tests.
+
+### Net Worth — FIN-002 (2026-08-18)
+Manually-tracked assets and liabilities plus a daily net-worth history trend, added to the existing Finance module (not a new top-level feature) alongside Budget/Goal. Investigated the `Account` model first, per the task's own explicit instruction not to assume every account balance should become an asset/liability — found `Account` carries no balance field at all and nothing in the app computes one, ruling out an automatic account-to-item conversion at the source. Modeled instead as its own manually-tracked entity (the same shape as Portfolio's `Holding` — no live price feed, no paid API), with one unified `NetWorthItem` model (an asset/liability `kind` discriminator, the same "don't duplicate near-identical shapes" call already made for Vault) rather than two parallel verticals. Historical tracking is a `NetWorthSnapshot` log — one row per calendar day, upserted whenever totals change — mirroring `GoalMilestoneEvent`'s exact "log what already happened, no backfill" precedent. Both new tables were added to `backupService.ts` and `enableEncryption.ts`'s table lists from day one, deliberately closing the exact gap found and fixed for Workout Tracker earlier the same day rather than repeating it. 27 new tests (calculation, schema validation, encrypted repository CRUD, snapshot upsert logic, store add/update/delete/persistence); `tsc -b`/`oxlint`/full suite/`npm run build` all clean. See [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md)'s FIN-002 entry for full detail, including the one open item: a live authenticated browser click-through was not performed (no device connected, no session available in a fresh browser context).
+
+### Subscription Manager — FIN-004 (2026-08-18)
+An independently-managed recurring-payment entity, added to the existing Finance module alongside Budget/Goal/Net Worth. The project already had subscription *detection* logic (`useSubscriptions.ts`'s derived-from-latest-transaction summary; `behaviorAnalysis.ts`'s pattern-matching `computeSubscriptions()`) — per the task's own explicit warning, neither was mistaken for a manager: both are read-only views with no independent lifecycle, so a real `Subscription` entity (name/amount/billing frequency/next billing date/status/category/account/note) was built alongside them, not on top of them. The pre-existing detector's own exported `Subscription` interface was renamed to `DetectedSubscription` to remove the naming collision, verified via grep to be safely containable to a single file. `nextBillingDate` is stored exactly as entered and never silently rewritten — a pure `resolveNextBillingDate()` helper rolls it forward for display only, using `date-fns`'s calendar-aware month/year arithmetic to handle edge cases like Jan 31 + 1 month correctly. Explicit non-goals at this stage, matching this project's "don't invent requirements" discipline: no duplicate-name blocking (matches Account/Category/Goal/Holding/NetWorthItem precedent), no search/filter UI (matches Goals' precedent), and no delete-confirmation dialog (matches every other comparable delete flow in this app, none of which use `window.confirm()`). (Automatic transaction generation was added the same day as a follow-up — see below.) The new `subscriptions` table was added to `backupService.ts` and `enableEncryption.ts`'s table lists from day one. 40 new tests (roll-forward/stats math, schema validation, encrypted repository CRUD/tombstone, store add/update/status-transition/delete); `tsc -b`/`oxlint`/full suite/`npm run build` all clean. See [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md)'s FIN-004 entry for full detail, including the one open item: manual on-device verification was attempted (a device was connected and its WebView devtools socket located) but blocked by the device's own OS-level lock screen, which was not bypassed.
+
+### Subscription auto-generated transactions + reminders, and Budget Improvements — FIN-001 (2026-08-18)
+A follow-up to complete FIN-004's own stated limitations, plus a new FIN-001 (no prior spec beyond a one-line roadmap note, scoped from the architecture and reviewed via Plan Mode given the stakes — auto-generating financial transactions is a real duplicate-risk write path). `subscriptionTransactionService.ts`'s `generateDueTransactions()` is a foreground-only due-check (this app still has no background/cron mechanism) mounted app-wide; for each active, account-having, due subscription it creates a dated transaction and advances `nextBillingDate` by one cycle as the direct, intended side effect of that write — `nextBillingDate` itself is the idempotency signal, capped at 12 catch-up cycles, and the generated transaction leaves `recurring` unset so the pre-existing subscription detector doesn't double-count it. Reminders extend the shared `reminders/` module with a new one-off schedule type alongside Habit/Schedule's existing daily/weekly repeats (their own entity types were narrowed to a new `RecurringRepeatRule` alias so the widened shared type didn't loosen their contracts).
+
+FIN-001 closed two real gaps in the existing Budget feature: no historical record survived a budget's amount being edited later (spend was always computed against the *current* amount), and its computed near/over-limit status was never surfaced as a notification. A new `BudgetPeriodSnapshot` upsert-by-period log (mirroring `NetWorthSnapshot`'s shape) fixes the first; a toast that fires exactly once per genuine escalation (never on downgrade, never on a brand-new row's first record) fixes the second.
+
+27 new tests across both; `tsc -b`/`oxlint`/full suite (**2380 tests**)/`npm run build` all clean, with the one pre-existing `RecipientLearning.integration` flake reproducing as always. One real test-authoring bug found and fixed along the way: `vi.spyOn()` against a Zustand store action is unreliable when that action itself calls `set()`, since the spy gets carried forward into every subsequent state object — fixed by asserting on the toast store's actual `toasts` array instead of spying on `show`.
+
+A second, real product bug surfaced only through live device testing: a real device's first-ever visit to `/budget` (4 existing budgets) produced 12 `BudgetPeriodSnapshot` rows instead of 4. Root cause — `Budget.tsx`'s `loadBudgets()`/`loadTransactions()` settle as two separate async updates on mount, each re-firing the recording effect, and each concurrent call read the same stale "existing rows" list before an earlier still-in-flight call's write had committed, so they raced into duplicate creates instead of updates. Fixed by serializing `recordBudgetProgress()` through a module-level promise-chain queue. Re-verified live after the fix: a genuinely fresh app process's first visit to `/budget` produced exactly 4 rows. See [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md)'s FIN-004 follow-up and FIN-001 entries for full detail.
+
+### Permission Manager — SEC-001 (2026-08-18)
+A single dedicated view of every OS-level permission Nexus requests (Gallery/Photos, Location, Local Notifications, Notification Access) — previously each checked/requested inline by its own feature with no shared view. `permissionManagerService.ts` reuses each permission's existing check function rather than reimplementing any of them, normalized onto the Gallery Scanner's own pre-existing 6-value status union. Adds one small new native plugin, `AppSettingsPlugin.java`, opening the app's generic system Settings screen — the one in-app recovery path that didn't exist before for a permanently-denied permission (mirrors the existing single-purpose `openAccessSettings()` Notification Access already had). Found and fixed a real stale code comment along the way: the native `GalleryPermissions` plugin was already registered and working (via `GalleryMediaPlugin.java`), not "not installed yet" as `galleryPermissionPlugin.ts`'s comment claimed — confirmed live on-device. 13 new tests; `tsc -b`/`oxlint`/full suite (**2393 tests**)/`npm run build`/`:app:assembleDebug` all clean, zero flakes reproduced. Verified live: all four permissions read real on-device status, and invoking the new native call genuinely navigated to Nexus's real Android App Info screen. See [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md)'s SEC-001 entry for full detail. **All 112 tracked tasks are now complete.**
+
+### Sync engine — a third hardening round: two real performance findings from a full architecture review (2026-08-18)
+A System Architecture Review (Architecture, Performance, Accessibility, Security, Maintainability, Technical Debt) surfaced two High-severity findings, both in the sync path that runs on a periodic background timer for any user with sync enabled — fixed as the first item worked through the review's suggested refactoring order. `backfillSyncMeta()` ran an unindexed full-table scan for every one of the 21 synced tables on every single sync pass, forever, even once a table had no unstamped legacy rows left to find; now gated behind a one-time per-table `syncState` flag, mirroring the existing `repairStuckPushCursorsOnce()` pattern in the same file. Separately, `accountService.merge()`/`categoryService.merge()` each independently re-fetched the entire `transactions` table (decrypting every row if encryption is on) — a real N+1 when `dedupeAccountsAndCategories()` resolves several duplicate accounts/categories in one pass. Fixed by fetching once and threading the updated array through each sequential merge call, rather than a naive shared-stale-snapshot cache — the latter would have let a later merge in the same pass silently undo an earlier one's fix to a transaction matched by both. 6 new tests (`accountService.test.ts` is a new file); `tsc -b`/`oxlint`/full suite (**2399 tests**)/`npm run build` all clean, zero flakes this run. Pure internal-behavior change — no schema, UI, or native code touched.
+
+### Drawer focus management (2026-08-18)
+Second item worked from the full architecture review's priority order: `Drawer.tsx` — the app's single primary modal pattern, 27 files / 31 usages across nearly every feature's add/edit forms — had no focus management at all before this. A new shared `useModalA11y` hook (`src/components/ui/`) adds `role="dialog"`/`aria-modal`, moves focus into the panel on open (its first focusable descendant, falling back to the panel itself), traps Tab/Shift+Tab within it instead of escaping to the page behind, closes on Escape, and returns focus to whatever triggered it once closed. Built dependency-free rather than pulling in a focus-trap library, matching this project's general preference for small hand-rolled solutions to contained problems. Written generically enough that `DropdownPanel` (item #7 on the same priority list, not yet done — it also has no `onClose` prop today) can reuse it directly. 5 new tests covering focus-on-open, focus-trap wrapping in both directions, Escape, and return-focus-on-close; `tsc -b`/`oxlint`/full suite (**2404 tests**)/`npm run build` all clean, with only the pre-existing `TradingDashboard.integration` flake reproducing (confirmed unrelated, passes 4/4 in isolation).
+
+### appLockStore split into PIN/biometric/encryption-key slices (2026-08-19, `120e2da`)
+Third item from the review: `appLockStore.ts` conflated three concerns (PIN lock/session lifecycle, biometric credentials, encryption DEK orchestration) in one 376-line store, flagged as the security-critical file where that conflation costs the most. Split into Zustand slices under `src/store/appLock/` (`pinLockSlice`, `biometricSlice`, `encryptionKeySlice`), composed back into the exact same `useAppLockStore`/`EncryptionStateCorruptedError` public surface — same persist key, same `partialize` shape, zero changes to any of the 39 consumer files or the existing 24-test suite. Cross-cutting flows (`unlock`/`changePin`/`disableLock`/`completeRecovery`) stay in the PIN slice, reaching into the other two via plain exported helpers (`wrapDekForPin`, `unwrapDekForUnlock`, `resyncBiometricCredential`) rather than new public methods. `tsc -b`/`oxlint`/full suite (**2404 tests**, unchanged)/`npm run build` all clean.
+
+### Consolidate PLAINTEXT_KEYS into one source of truth (2026-08-19, `4292cb8`)
+Fourth item: which fields of an encrypted table stayed plaintext was hand-duplicated across `createRepository()` call sites, `backupService.ts`, and `enableEncryption.ts`, each admitting in its own comment that the other two had to be kept in sync manually. Added `src/database/plaintextKeys.ts` as the single canonical map; `createRepository()` now derives `plaintextKeys` from `tableName` automatically instead of accepting it as a per-call-site option, so a conflicting value can no longer be specified anywhere. `tsc -b`/`oxlint`/full suite (**2404 tests**)/`npm run build` all clean.
+
+### Disable Encryption flow — SEC-005 (2026-08-19)
+Fifth item, and `docs/TECHNICAL_DEBT.md`'s top-ranked known issue: encryption-at-rest could be turned on with no way back — `disableLock()` refused to run while `encryptionEnabled` was true, pointing at a "not-yet-built flow." Built `disableEncryption()`, the exact inverse of `enableEncryption()`. The one load-bearing design decision: enable flips `encryptionEnabled: true` *before* its per-table encrypt loop (safe — an interrupted run just leaves rows plaintext, an already-tolerated state); disable does the opposite on purpose, decrypting and verifying every table *before* flipping the flag off, because `unwrapDekForUnlock` never attempts to unwrap a DEK once the flag is false — flipping it early risked a permanent lockout if interrupted mid-way. Proven with a crash-simulation test and a full round-trip test (disable → plaintext → `enableEncryption()` again → data still reads correctly). Extracted `enableEncryption.ts`'s table list/chunk size/migration lock into a new `migrationShared.ts`, shared by both directions so they mutually exclude each other via the same lock; exported `encryptedRepository.ts`'s private `decryptRow` so the new migration reuses it instead of a third copy of the same logic. New `DisableEncryptionForm.tsx`, wired into `EncryptionSettings.tsx`, warning that Vault becomes inaccessible until re-enabled (confirmed via `Vault.tsx`'s existing gate) and that the server-side recovery key is removed (best-effort, non-blocking). 18 new tests (`disableEncryption.test.ts` ×13, `DisableEncryptionForm.test.tsx` ×5); `tsc -b`/`oxlint`/full suite (**2422 tests**)/`npm run build` all clean. Not yet manually validated live in a browser — doing so requires a signed-in Supabase test account, which wasn't available this session; see the SEC-005 entry in [../tasks/TASK_REGISTRY.md](../tasks/TASK_REGISTRY.md).
+
+### Reports module (2026-08-21)
+The last remaining item from the priority list this session's "งานต่อไป" ranking produced. A `/reports` page with two report types, both a pure export/presentation layer over `useFinancialAnalysis()`'s already-computed data — no new business logic, matching the same discipline the Deeper Trading Analytics batch below was built with. **Financial Summary**: `cashFlowAnalysis.monthlyTrend` (the engine's existing trailing 6-month income/expense/saving table) and `spendingAnalysis.topCategories` (current-month category breakdown), exportable as PDF (`jsPDF`/`jspdf-autotable`, mirroring `transactionPdf.ts`'s dynamic-import pattern exactly) or CSV (`rowsToCsv`/`downloadFile`, the same shared utilities every other CSV export in the app uses). **AI Analytics Report**: a narrative PDF of `executiveSummaryReport`'s headline/highlights and `financialHealthScore`'s grade/top strengths/weaknesses/recommendations — deliberately just these two sections, not all 13 `AiAnalytics.tsx` renders on screen, with simple page-break handling for longer reports. Every message rendered (`{key, params}` engine output) is resolved through the same `TranslateFn` the on-screen UI already uses, so the PDF is never a second, English-only copy of already-translatable content. No date-range picker was added — `AiAnalytics.tsx` itself has never had one (it analyzes full transaction history unconditionally), so Reports simply follows that existing precedent rather than inventing a new UI pattern. 7 new test files (jsPDF runs for real in the test environment, asserted on its actual output — `doc.output("datauristring")`/`doc.getNumberOfPages()` — rather than mocked, mirroring `transactionPdf.test.ts`'s own precedent); `tsc -b`/`oxlint`/full suite/`npm run build` all clean.
+
+### Deeper Trading Analytics — Strategy Library, Watchlist, Economic Calendar, and stats (2026-08-21)
+Scoped via `AskUserQuestion` against ROADMAP.md's "Deeper Trading analytics" line, which bundled eight items of very different size and two genuine architectural forks (Trade Replay and Economic Calendar could each have meant "needs a new external API" or "the user's own logged data" — resolved explicitly toward the latter, keeping this app's existing no-paid-API/no-live-price-feed precedent intact). Delivered as eight small commits/groups, each verified (`tsc -b`/`oxlint`/full suite/`npm run build`) before the next: (1) **Expectancy** (mean realized R-multiple, reusing — not duplicating — the formula already inline in `useTradingAnalytics.ts`'s risk-distribution bucketing, now extracted to `pnl.ts`) and **average holding time** (entry→exit span, missing clock times defaulting to midnight); (2) a full **Strategy Comparison** table (per-strategy trade count/win rate/P&L/profit factor/average RR, sortable, no new entity); (3) a read-only **Trade Replay** timeline (entry → position → exit → reflection) built entirely from fields already on `Trade` — deliberately no external chart/price-history data; (4)-(6) three new synced+encrypted entities — **Strategy** (playbook rules, schema v25), **WatchlistItem** (manual `targetPrice`, no live price — same precedent as Holdings, schema v26), **EconomicEvent** (user-logged events, no external economic-data API, schema v27) — each following `Trade`'s own `createRepository`/`createCrudService` pattern; Strategy and Watchlist's schema/sync/backup wiring landed in one combined commit since both were edited into shared infrastructure files (`db.ts`, `sync/types.ts`, `migrationShared.ts`, `syncEngine.ts`, `backupService.ts`) before either was committed — documented honestly in that commit's message rather than presented as two atomic changes it wasn't; (7) an upcoming-events Dashboard widget for Economic Calendar specifically (the one new entity that gets one — Strategy/Watchlist are nav-only management pages, matching Merchant's own precedent); Trade's own strategy field gained a `<datalist>` suggestion sourced from the new Strategy Library (free text stays valid, no hard foreign key, no migration of existing values needed). Each of the three new tables required touching **three separate, independently-hand-maintained table lists** (`SyncTableName` in `sync/types.ts`, `ENCRYPTABLE_TABLES` in `migrationShared.ts`, and `syncEngine.ts`'s own private `SYNCED_TABLES`) plus a `Record<SyncTableName, ...>` completeness check in `syncEngine.ts`'s `STORE_REFRESHERS` that the compiler enforces — pre-existing technical debt (three lists that should be one), not introduced here, worked around by adding to all three consistently like every prior entity had to. 12 new test files; `tsc -b`/`oxlint`/full suite (2560+ tests across the run)/`npm run build` all clean at each step.
+
+### Subscription billing anchor day — BUG-12 (2026-08-20)
+Fixed a drift bug in recurring monthly/yearly subscription billing: `advanceOneBillingCycle()` correctly clamps a month-length overflow (Jan 31 + 1 month → Feb 28, via `date-fns`), but the *next* advance was computed from that already-clamped date, permanently rebasing every later cycle down to the 28th instead of returning to the 31st once the calendar allowed it again (Mar 31, Apr 30, May 31). New optional `Subscription.billingAnchorDay` field persists the true intended billing day separately from `nextBillingDate`, resolved once per subscription and threaded unchanged through both `advanceOneBillingCycle()`'s and `resolveNextBillingDate()`'s loops, rather than re-derived from an intermediate clamped value on each step. `SubscriptionForm.tsx` recomputes it only when the user actually changes `nextBillingDate`, so an edit to any other field doesn't overwrite an already-correct anchor; `subscriptionTransactionService.ts`'s catch-up loop backfills it onto the persisted row the first time a subscription created before this field existed passes through it — the best available information, honestly documented as unable to recover a day that had already drifted before this fix shipped. Purely additive: no Dexie schema version bump needed (`billingAnchorDay` is a plain, unindexed field on the already-synced-and-encrypted `subscriptions` table, so sync/encryption/backup need no changes either). 23 new tests across `subscriptionMath.test.ts`, `subscriptionTransactionService.test.ts`, and `subscriptionRepository.test.ts`; `tsc -b`/`oxlint`/full suite/`npm run build` all clean. Not manually validated live in a browser — see the BUG-12 report for why.
+
+### Executive Dashboard Foundation — EXEC-001 (2026-08-21)
+A new middle layer above every existing module (`src/features/executive/`, `/executive`) — not a rewrite of the existing cross-module `Dashboard`, and not a chatbot or an autonomous agent (both explicitly out of scope). A pure, hook-free `buildExecutiveContext()` assembles a domain snapshot from already-existing pure functions (`analyzeGoals`, `getCurrentAndNext`, `computeStreak`/`isCompletedToday`, `getLoggedDates`) plus the already-computed outputs of `useBudgetProgress`/`useNetWorthStats`/`useTradingStats`, called once at the new orchestration hook and passed through as data rather than re-derived — the only viable path for Trading specifically, since `useTradingStats`' math lives only inside its own hook with no standalone pure-function export. `calculateExecutivePriorities()` scores overdue todos, at-risk habits, and at-risk/deadline-soon goals from small, named, capped signals, each carrying a `reasons[]` explanation resolved through i18n — never an opaque score — with an explicit deterministic tie-break (score → category → id) instead of relying on incidental sort stability. `buildExecutiveSummary()`'s workload level is a plain threshold over a real count and is always labeled "Executive Summary," never "AI says" — no LLM or randomness anywhere in this task. Zero new Dexie tables and zero new stores: every number is read live through existing stores/hooks. **One real bug found and fixed before shipping**: `useBudgetProgress`/`useNetWorthStats`/`useTradingStats` don't trigger their own store load, so the new page's orchestration hook originally left the Finance/Trading snapshots silently zeroed out on a fresh session that opened `/executive` before ever visiting `/finance` or `/trading` — caught by the page-level integration test, fixed by also loading `transactions`/`budgets`/`netWorthItems`/`trades` explicitly. 8 new UI components, 3 pure engine functions, 1 orchestration hook, 26 new tests (unit + page-level integration) plus a new `e2e/executive.spec.ts` (4 Playwright tests: nav + empty state, a real overdue todo surfacing in Priority and linking back to Todo, refresh persistence, mobile reachability via the More menu); `tsc -b`/`oxlint`/full suite (2620 tests)/`npm run build` all clean, full e2e suite 75/76 (the one failure is the pre-existing, already-documented `merge-duplicate-transactions.spec.ts` staleness, unrelated to this task). Not pushed — committed locally only.
+
+### Two-factor authentication + Login History (2026-08-21)
+Tier-4 backlog item from ROADMAP.md's "Future" section, scoped with the user via a short planning pass given the security stakes. Applies only to the optional Supabase cloud-sync account (Layer 2 of 3 — the device-local App Lock PIN/biometric and the encryption-at-rest DEK/KEK escrow are both untouched). Uses Supabase Auth's own native MFA API directly (`supabase.auth.mfa.*`) — no new backend, and the QR code Supabase returns at enrollment renders as-is with no client-side QR-generation dependency needed. The one genuinely new design problem: Supabase's own `getAuthenticatorAssuranceLevel()` only reflects its native factor verification, which a backup-code redemption (a custom mechanism, not a Supabase factor type) would never satisfy — checking it alone would re-prompt in a loop right after a valid backup-code sign-in. Fixed by tracking "MFA satisfied this session" in the app's own `sessionStorage`-scoped flag (`mfaSession.ts`, cleared on sign-out), checked by one gate (`resolveMfaAccess()`) called from every place `authStore.ts` can set the signed-in user — the initial session-restore check, the `onAuthStateChange` listener (which fires independently of and can race ahead of `signIn()`'s own code), and `signIn()` itself — so a password-only session can never slip past the challenge screen regardless of which path a sign-in takes. Backup/recovery codes are a new, minimal Postgres table (`public.mfa_backup_codes`, RLS-scoped, `supabase/schema.sql`), hashed with the exact same salted-SHA-256 helper the App Lock PIN already uses (`pinHash.ts`, reused directly — appropriate here since a backup code, unlike a human-chosen PIN, is already a high-entropy random secret) and verified entirely client-side, the same pattern every other secret in this app already follows. Login History reuses the existing Audit Log's data and drawer component (`AuditLogDrawer` gained an optional `fixedType` prop that hides the type-filter row) instead of a parallel mechanism — sign-in/out and the new `mfa-enroll`/`mfa-unenroll`/`mfa-verify`/`mfa-backup-codes-generated` events all show up there together. Landed as two commits (Login History first, small and independent; then the session-gating/enrollment/backup-codes work together) per the approved plan. 22 new test files/additions across `authStore.test.ts` (incl. a dedicated case for the `onAuthStateChange` race, the actual bug this feature exists to prevent), `mfa.test.ts`, `backupCodes.test.ts`, `MfaChallengeScreen.test.tsx`, `EnrollMfaForm.test.tsx`, `DisableMfaForm.test.tsx`, `RegenerateBackupCodesForm.test.tsx`, `BackupCodesDisplay.test.tsx`, `MfaSettings.test.tsx`, and extended `AuthGate.test.tsx`/`LoginScreen.test.tsx`/`AuditLogDrawer.test.tsx`; `tsc -b`/`oxlint`/full suite/`npm run build` all clean. Not pushed — committed locally only.
+
+### Email OTP verification at sign-up (2026-08-21)
+User-requested follow-up to the 2FA work above, in the same Layer 2 area: `signUp()`'s existing "check your inbox" confirmation-link flow is replaced with an OTP-code flow, using Supabase Auth's own `auth.verifyOtp({ email, token, type: "signup" })`/`auth.resend()` directly — no new backend, no new dependency, same "Supabase Auth already is the backend" pattern as TOTP. `authStore.ts` gained `emailVerificationPending`/`pendingVerificationEmail`/`emailVerificationError` state and `verifyEmailOtp`/`resendEmailVerification`/`cancelEmailVerification` actions, additive alongside the pre-existing `needsEmailConfirmation` field so `SyncSettings.tsx`'s own independent (and, once cloud sync is configured, unreachable in production — `AuthGate.tsx` already gates the whole app behind `LoginScreen` first) sign-up form needed zero changes. `AuthGate.tsx` gained one branch parallel to its existing `mfaPending` one, routing to a new `EmailVerificationScreen.tsx` (mirrors `MfaChallengeScreen.tsx`'s shell) whenever a sign-up is pending its code — `LoginScreen.tsx` itself needed no changes at all, exactly like the MFA challenge screen before it. Also closes the "duplicate email" gap the user asked about: Supabase's documented anti-enumeration behavior returns a "successful" `signUp()` response with an **empty `identities` array**, instead of a distinguishing error, when the email already belongs to a confirmed account — `authStore.ts` now detects `identities?.length === 0` and surfaces "account already exists" instead of silently proceeding. `verifyEmailOtp` routes its result through the same `resolveMfaAccess()` gate as every other place the store can grant `user`, keeping that invariant true even though a brand-new account can't yet have an MFA factor enrolled. One hard, code-independent dependency: the Supabase Dashboard's "Confirm signup" email template must include `{{ .Token }}` or no code is ever emailed — documented in `DEPLOYMENT.md` and `supabase/schema.sql`'s header comment; the user confirmed they have Dashboard access and will set it themselves. New/extended tests: `authStore.test.ts` (duplicate-email rejection, OTP success/failure, resend, cancel), new `EmailVerificationScreen.test.tsx`, extended `AuthGate.test.tsx`/`LoginScreen.test.tsx`; `tsc -b`/`oxlint`/targeted and full suite/`npm run build` all clean. Not pushed — committed locally only.
+
+### AI Gateway wired to Claude + AI Coach real-LLM fallback (2026-08-21)
+Tier-4 backlog item ("AI Gateway → real LLM"), scoped via Plan Mode given the new infrastructure and privacy implications. Every AI surface in Nexus was deliberately rule-based (`docs/DECISIONS.md`: offline, zero-cost, zero-hallucination-risk), with a full provider-agnostic seam (`src/ai/` — `AIProvider`/`AIGateway`/`ProviderRegistry`/`ProviderFactory`) already built but never wired in, since doing so safely needs a backend proxy an API key cannot live without. That proxy now exists: `supabase/functions/ai-coach`, a single stateless Deno Edge Function — this repo's first server-side code ever. It verifies the caller's own forwarded session JWT (`auth.getUser()`, no service-role key anywhere), atomically increments and checks a per-user daily counter via a new `SECURITY INVOKER` Postgres function (`increment_ai_coach_usage()`, closing a count-then-insert race a naive implementation would have) *before* ever calling Anthropic — so a capped user never causes billed spend — then proxies to Claude's Messages API (`claude-haiku-4-5-20251001`) with a system prompt instructing it to answer only from the provided data and never fabricate a number. `ClaudeProvider` (`src/ai/providers/ClaudeProvider.ts`) fills the `ProviderFactory`'s already-reserved `"claude"` slot, implementing only `chat()` (the only method anything calls); its two error-mapping branches were caught and fixed during implementation — `initialize()`/`analyze()`/`summarize()`/`generateRecommendations()` originally threw synchronously from non-`async` methods, violating the interface's `Promise<...>` contract and silently defeating a `.catch()`-chaining caller (fixed by making all four properly `async`, matching `LocalRuleProvider`'s own convention, caught by the test suite immediately). The AI Coach (`AiCoachSection.tsx`) calls this only as a fallback when the rule engine's `classifyIntent()` returns `"unknown"`, gated on three independent conditions (opted in via a new off-by-default Settings toggle, cloud sync configured, signed in) — every rule-answerable question keeps its exact existing synchronous, free, deterministic path. Only a strict allow-list of aggregate numbers ever leaves the device (`buildCoachLlmContext.ts` — totals, top categories, budget status, health score, behavior-style label, generic habit ids), verified by a test that asserts a distinctive merchant name and transaction title are *absent* from the built payload, not just that expected fields are present — every field reference in that function was checked directly against the real analyzer/model types rather than assumed, after an earlier subagent-drafted version of this same function used several plausible-but-wrong field names. An LLM-sourced answer reuses `CoachResponse`'s existing `{key, params}` shape by putting raw prose directly into `answer.key`, exploiting the exact same "unresolved i18n key renders verbatim" fallback `AiCoachAnswerCard.tsx`'s own `metricLabel()` already relies on — zero new rendering machinery needed — and is visually distinguished with an "AI-generated" badge in place of the (meaningless for free-form prose) confidence percentage. New tests across `ClaudeProvider.test.ts`(+`.unconfigured.test.ts`), `buildCoachLlmContext.test.ts`, `AiCoachSection.test.tsx` (this component's first test file ever), `aiCoachSettingsStore.test.ts`, `AiCoachSettings.test.tsx`(+`.unconfigured.test.tsx`), plus the required `ProviderFactory.test.ts` update (its old assertion that `"claude"` throws is now false); `tsc -b`/`oxlint`/full suite (2712 tests, only the pre-existing `RecipientLearning.integration` flake failing, unrelated)/`npm run build` all clean. Deployment of the Edge Function itself and setting the `ANTHROPIC_API_KEY` secret are manual, one-time Supabase CLI steps documented in `DEPLOYMENT.md` — not run as part of this change. Not pushed — committed locally only.
+
+### Redesigned Login/Sign-up screen (2026-08-21/22)
+User shared a reference mockup (a crypto-exchange sign-up screen) and asked for the same layout, clarified to use Nexus's own name/branding and to make first name/last name/phone real functional fields (currency skipped). Replaced `LoginScreen.tsx`'s narrow centered card with a wide split-panel layout — a gradient/glass decorative panel (multiple blurred brand-colored orbs, a subtle dot-grid texture, two floating "glass" feature cards) plus a form panel — going through two passes after the first attempt was judged too plain: the second pass forced the card into a fixed dark aesthetic regardless of the app's own light/dark/system theme setting, discovered achievable with zero shared-component risk once `src/styles/index.css`'s `@custom-variant dark (&:where(.dark, .dark *))` was read directly — wrapping just this card in a local `<div className="dark">` makes every `dark:` utility inside it (including `FormField.tsx`, reused unmodified from elsewhere) resolve correctly without touching a single shared component. Sign-up now collects first name, last name, and phone, passed through `authStore.ts`'s `signUp()` (widened with an optional 3rd `profile` param, so `SyncSettings.tsx`'s existing 2-arg call site keeps compiling and behaving identically) into Supabase's own `options.data` user-metadata mechanism (confirmed against the real `@supabase/auth-js` types — a field completely separate from Supabase's reserved phone-auth identifier, so it can't accidentally trigger a phone-OTP flow). Live validation styling (border color + a check/✕ badge, shown only once a field is touched) was added per-field locally in this component rather than as a new shared component. `AuthBackdrop.tsx` needed no changes — confirmed it never enforced narrowness itself (only each child screen's own `max-w-sm` did), so `LoginScreen.tsx` simply widening to `max-w-5xl` renders correctly inside the same backdrop the other 4 screens it wraps (MFA challenge, email verification, App Lock, encryption recovery) still use untouched. Extended `LoginScreen.test.tsx`/`authStore.test.ts`; `tsc -b`/`oxlint`/tests/`npm run build` all clean. Not pushed — committed locally only.
+
+### Automation — weekly financial digest (2026-08-22)
+Tier-4 backlog item ("Automation — IF/THEN workflows, scheduled reports/alerts"), scoped down through several rounds of clarification after the user's first choice (real push notifications) hit a hard external-dependency wall (Firebase project setup the user wasn't ready to do, mirroring the Anthropic/Supabase CLI friction from the AI Coach work) and was explicitly deferred. Landed instead: one concrete automation the user specifically wanted — a weekly financial summary computed even while the app is closed, waiting in-app the next time they open it (no push, no email, by their own explicit choice). Scoping surfaced a real architectural conflict before any code was written: Nexus's financial-analysis logic is 100% client-side (reads local Dexie directly), and for an account with encryption enabled, the server-side `synced_records.data` payload is ciphertext it structurally cannot read — resolved by scoping the automation to non-encrypted accounts only, verified via `user_encryption_keys` row presence (`disableEncryption.ts` deletes that row on disable, confirming the invariant holds). `public.generate_weekly_digests()` is the first `SECURITY DEFINER` function in this codebase (every other custom function here, `increment_ai_coach_usage()`, is `SECURITY INVOKER`) — deliberately so, since computing a digest for every eligible user in one pass requires reading across user boundaries no RLS-respecting invoker role ever could; hardened with a pinned `search_path` and defensive regex guards so one malformed transaction row can't abort another user's digest in the same batch. Scheduled weekly via `pg_cron` — a single Supabase Dashboard extension toggle, no new external account or credentials, the lightest setup dependency landed all session. New `src/features/automation/` module (`automationService.ts`, `WeeklyDigestCard.tsx` on the Dashboard) reads the digest and marks it seen via the table's own `seen_at` column — deliberately not reusing `notificationStore.ts`'s dismissed-id-list pattern, since that exists specifically for data with no server-side "seen" concept, which doesn't apply here. New tests: `automationService.test.ts`, `WeeklyDigestCard.test.tsx`; `tsc -b`/`oxlint`/tests/`npm run build` all clean. No automated coverage for the SQL function/cron schedule itself (same category as the AI Coach's Edge Function — outside the Vitest/Node project) — verification is manual, documented in `DEPLOYMENT.md`. Not pushed — committed locally only.
+
+### Fix: two `src/ai/` tests depended on ambient env instead of stubbing it (2026-08-22)
+Found via a routine full-suite run right after the Automation work above, not a regression in either feature's own code: `aiGatewayConfig.test.ts`'s "defaults to local-rule when nothing is configured" and `aiGatewayService.test.ts`'s two "the composed singleton" tests all silently assumed `VITE_AI_PROVIDER` was unset in the environment Vitest runs in — true before this session, but no longer true on a machine whose `.env.local` now has `VITE_AI_PROVIDER=claude` set (added earlier this session for the AI Coach's own local manual testing, per `aiGatewayConfig.ts`'s own doc comment on why it reads env freshly per call — clean intent, just not followed by these two test files). The failure mode was worse than a wrong assertion: `aiGatewayService.ts` builds its `aiGateway` singleton once at module import time, so once a real `ClaudeProvider` existed to select, the "no mocks, real end-to-end" test in `aiGatewayService.test.ts` started making a genuine, unmocked network call to the live deployed `ai-coach` Edge Function during an ordinary test run (surfacing as a 401, since no real signed-in session exists in a test environment) — a real landmine for whoever next runs this suite with any non-default `VITE_AI_PROVIDER` set locally. Fixed by explicitly stubbing `VITE_AI_PROVIDER` (and its siblings) rather than relying on ambient env: `aiGatewayConfig.test.ts`'s first test now calls `vi.stubEnv(..., "")` before asserting the default; `aiGatewayService.test.ts` now stubs the env var and only then dynamically imports the module under test, since the singleton's already-fixed composition can't be changed retroactively by a stub called after a static import already ran. `tsc -b`/`oxlint`/full suite all clean afterward, deterministic regardless of what `VITE_AI_PROVIDER` a given machine's `.env.local` happens to have. Not pushed — committed locally only.
+
+## Implemented Features
+
+See [ROADMAP.md](ROADMAP.md)'s "Completed" section for the full current-state feature list across every module, and [MODULES.md](MODULES.md) for per-module detail.
+
+## Upcoming Features
+
+See [ROADMAP.md](ROADMAP.md)'s "Planned" and "Future" sections. No item is currently queued under Planned; larger Future initiatives require product or infrastructure decisions first.
+
+## Current Status
+
+This changelog was reconciled with the current working tree on 2026-08-29. The accumulated tree passes Build/TypeScript, oxlint, 2,740 Vitest cases, and 76 Playwright Chromium cases.
+
+## Future Improvements
+
+Create a signed release commit and Git tag when `0.1.0` is ready to publish; package metadata alone is not a release — see [DEPLOYMENT.md](DEPLOYMENT.md).

@@ -1,0 +1,187 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { db } from "@/database/db";
+import { useBankSelectionStore } from "@/features/finance/slipScanner/store/bankSelectionStore";
+import type { SlipCandidate } from "@/features/finance/slipScanner/models/slipCandidate";
+import type { SlipExtractor } from "@/features/finance/slipScanner/services/slipExtractionProcessor";
+import { useLanguageStore } from "@/store/languageStore";
+import { useToastStore } from "@/store/toastStore";
+
+import GalleryScanFlow from "./GalleryScanFlow";
+
+const fakeExtractor: SlipExtractor = async ({ assetId }): Promise<SlipCandidate> => ({
+  id: assetId,
+  assetId,
+  source: "qr",
+  isDuplicate: false,
+  confidence: 90,
+  amount: 100,
+  merchant: `Coffee Shop ${assetId}`,
+  payload: `verified-emvco-payload-${assetId}`,
+});
+
+const fakeOcrExtractor: SlipExtractor = async ({ assetId }): Promise<SlipCandidate> => ({
+  id: assetId,
+  assetId,
+  source: "ocr",
+  isDuplicate: false,
+  confidence: 90,
+  amount: 180,
+  merchant: `OCR Cafe ${assetId}`,
+});
+
+function file(name: string, content: string): File {
+  return new File([content], name, { type: "image/jpeg" });
+}
+
+beforeEach(async () => {
+  useBankSelectionStore.getState().reset();
+  useLanguageStore.setState({ language: "en" });
+  useToastStore.setState({ toasts: [] });
+  await db.slipScanRuns.clear();
+  await db.slipScanCache.clear();
+  await db.transactions.clear();
+  await db.slipImportHistory.clear();
+});
+
+describe("GalleryScanFlow", () => {
+  it("renders the Scan Gallery button", () => {
+    render(<GalleryScanFlow />);
+    expect(screen.getByRole("button", { name: "Scan Gallery" })).toBeInTheDocument();
+  });
+
+  it("opens the bank selection popup when the button is clicked", async () => {
+    const user = userEvent.setup();
+    render(<GalleryScanFlow />);
+
+    // Popup is closed initially.
+    expect(screen.queryByText("Scan your gallery")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
+
+    expect(screen.getByText("Scan your gallery")).toBeInTheDocument();
+  });
+
+  it("can open the setup popup immediately for shared page entry points", () => {
+    render(<GalleryScanFlow automaticScan={false} initialOpen />);
+
+    expect(screen.getByText("Scan your gallery")).toBeInTheDocument();
+  });
+
+  it("shows the date-range picker in the scan setup popup, defaulting to blank (whole gallery)", async () => {
+    const user = userEvent.setup();
+    render(<GalleryScanFlow />);
+
+    await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
+
+    await user.click(screen.getByRole("button", { name: "Choose banks or dates" }));
+    expect(screen.getByText("Date range (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("From")).toHaveValue("");
+    expect(screen.getByLabelText("To")).toHaveValue("");
+  });
+
+  it("scans all photos without overwriting the remembered bank filter", async () => {
+    const user = userEvent.setup();
+    useBankSelectionStore.getState().setSelectedBankIds(["scb"]);
+    render(<GalleryScanFlow />);
+
+    await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
+    await user.click(screen.getByRole("button", { name: "Choose image folder" }));
+
+    expect(useBankSelectionStore.getState().chosen).toBe(false);
+    expect(useBankSelectionStore.getState().selectedBankIds).toEqual([]);
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).toHaveAttribute("webkitdirectory");
+    expect(fileInput).toHaveAttribute("directory");
+  });
+
+  it("reports a selected folder that contains no supported images", async () => {
+    const user = userEvent.setup();
+    render(<GalleryScanFlow />);
+    await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
+    await user.click(screen.getByRole("button", { name: "Choose image folder" }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(["notes"], "notes.txt", { type: "text/plain" })] } });
+
+    expect(useToastStore.getState().toasts.at(-1)?.message).toBe("No supported images were found in the selected folder");
+  });
+
+  it("drives the full web flow through the real orchestrator and auto-imports extracted candidates", async () => {
+    const user = userEvent.setup();
+    render(<GalleryScanFlow extractor={fakeExtractor} />);
+
+    await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
+    await user.click(screen.getByRole("button", { name: "Choose banks or dates" }));
+    await user.click(screen.getByRole("button", { name: "Start scan" }));
+
+    // Not on native in jsdom, so confirming banks falls through to the
+    // hidden file input instead of auto-enumerating.
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, [file("a.jpg", "gallery-flow-1"), file("b.jpg", "gallery-flow-2")]);
+
+    // The scan runs through useFullGalleryScan -> createScanSession (the
+    // same orchestrator a real native full-gallery scan would use), showing
+    // live progress while in flight.
+    await waitFor(() => expect(screen.getByText("Scan progress")).toBeInTheDocument());
+
+    // Once it completes, GalleryScanFlow sends both extracted candidates
+    // straight through Smart Import without opening a review drawer.
+    await waitFor(async () => expect(await db.transactions.count()).toBe(2));
+
+    const imported = await db.transactions.toArray();
+    expect(imported.every((t) => t.title.startsWith("Coffee Shop"))).toBe(true);
+  });
+
+  it("opens the review queue for OCR candidates instead of importing them silently", async () => {
+    const user = userEvent.setup();
+    render(<GalleryScanFlow extractor={fakeOcrExtractor} />);
+
+    await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
+    await user.click(screen.getByRole("button", { name: "Choose banks or dates" }));
+    await user.click(screen.getByRole("button", { name: "Start scan" }));
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(fileInput, [file("ocr.jpg", "gallery-flow-ocr")]);
+
+    await waitFor(() => expect(screen.getByText("Import preview")).toBeInTheDocument());
+    expect(await db.transactions.count()).toBe(0);
+    await waitFor(() => expect(screen.getByText(/OCR Cafe ocr\.jpg/)).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Import 1 selected" }));
+    await waitFor(async () => expect(await db.transactions.count()).toBe(1));
+  });
+
+  it("restores pending OCR candidates from a completed run", async () => {
+    const runId = await db.slipScanRuns.add({
+      status: "completed",
+      source: "native-media",
+      startedAt: "2026-09-15T00:00:00.000Z",
+      total: 1,
+      done: 1,
+      skipped: 0,
+      failed: 0,
+    });
+    const pending: SlipCandidate = {
+      id: "pending-ocr",
+      assetId: "pending-ocr",
+      source: "ocr",
+      isDuplicate: false,
+      confidence: 90,
+      amount: 180,
+      merchant: "OCR Cafe pending-ocr",
+    };
+    await db.slipScanCandidates.add({
+      runId,
+      assetId: "pending-ocr",
+      candidate: pending,
+    });
+
+    render(<GalleryScanFlow />);
+
+    await waitFor(() => expect(screen.getByText("Import preview")).toBeInTheDocument());
+    expect(screen.getByText(/OCR Cafe pending-ocr/)).toBeInTheDocument();
+  });
+});

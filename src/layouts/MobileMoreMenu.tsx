@@ -1,0 +1,68 @@
+import { NavLink } from "react-router-dom";
+import { Settings } from "lucide-react";
+
+import Drawer from "@/components/ui/Drawer";
+import NexusToolsLink from "./NexusToolsLink";
+import { useTranslation } from "@/i18n/useTranslation";
+import {
+  secondaryFinanceMenus,
+  secondaryTradingMenus,
+  secondaryPersonalMenus,
+  type MenuItem,
+} from "./navItems";
+
+const SECTIONS: { titleKey: string; items: MenuItem[] }[] = [
+  { titleKey: "nav.finance", items: secondaryFinanceMenus },
+  { titleKey: "nav.trading", items: secondaryTradingMenus },
+  { titleKey: "nav.personal", items: secondaryPersonalMenus },
+];
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
+
+const linkClassName = ({ isActive }: { isActive: boolean }) =>
+  `flex items-center gap-3 rounded-xl px-4 py-3 transition ${
+    isActive
+      ? "main-nav-active"
+      : "text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+  }`;
+
+export default function MobileMoreMenu({ open, onClose }: Props) {
+  const { t } = useTranslation();
+  return (
+    <Drawer open={open} onClose={onClose} label={t("nav.menu")}>
+      <div className="space-y-6">
+        <h2 className="pr-14 text-xl font-bold">{t("nav.menu")}</h2>
+
+        <p className="pr-14 text-sm text-zinc-600 dark:text-zinc-400">
+          {t("nav.allFeaturesHint")}
+        </p>
+
+        {SECTIONS.map((section) => (
+          <div key={section.titleKey}>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              {t(section.titleKey)}
+            </p>
+
+            <div className="space-y-1">
+              {section.items.map((item) => (
+                <NavLink key={item.path} to={item.path} onClick={onClose} className={linkClassName}>
+                  <item.icon size={20} />
+                  {t(item.labelKey)}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <NavLink to="/settings" onClick={onClose} className={linkClassName}>
+          <Settings size={20} />
+          {t("nav.settings")}
+        </NavLink>
+        <NexusToolsLink onClick={onClose} />
+      </div>
+    </Drawer>
+  );
+}

@@ -1,0 +1,221 @@
+import { db } from "@/database/db";
+import { writeLocalSyncRows } from "@/database/localSyncWrite";
+import { downloadFile } from "@/utils/download";
+import { exportBackup } from "@/database/backupService";
+import { supabase, isSyncConfigured } from "@/lib/supabaseClient";
+import { useAppLockStore } from "@/store/appLockStore";
+import { useAuthStore } from "@/features/sync/store/authStore";
+import { useEncryptionSessionStore } from "@/features/encryption/store/encryptionSessionStore";
+import {
+  generateDek,
+  deriveKek,
+  wrapDek,
+  generateRandomBytes,
+  bytesToBase64,
+  PBKDF2_ITERATIONS,
+} from "@/features/encryption/crypto/encryption";
+import { encryptRow, type EncryptedRow } from "@/database/encryptedRepository";
+import { PLAINTEXT_KEYS } from "@/database/plaintextKeys";
+import {
+  ENCRYPTABLE_TABLES,
+  CHUNK_SIZE,
+  MigrationAlreadyInProgressError,
+  acquireMigrationLock,
+  releaseMigrationLock,
+} from "@/features/encryption/migration/migrationShared";
+import { recordAudit } from "@/features/security/auditLog";
+import type { SyncTableName } from "@/features/sync/types";
+import type { TranslateFn } from "@/i18n/useTranslation";
+
+// Re-exported so existing consumers (tests included) that import this class
+// from enableEncryption.ts keep working — the actual definition now lives in
+// migrationShared.ts, shared with disableEncryption.ts.
+export { MigrationAlreadyInProgressError };
+
+export type MigrationPhase = "backup" | "escrow" | "encrypting" | "verifying" | "done";
+
+export interface MigrationProgress {
+  phase: MigrationPhase;
+  tableIndex?: number;
+  tableCount?: number;
+  currentTable?: SyncTableName;
+  rowsDone?: number;
+  rowsTotal?: number;
+}
+
+function downloadPlaintextBackup(json: string): void {
+  downloadFile(
+    `nexus-backup-before-encryption-${new Date().toISOString().slice(0, 10)}.json`,
+    json,
+    "application/json"
+  );
+}
+
+// Escrows a copy of the DEK server-side (wrapped with a key derived from
+// the account password, re-entered here as defense-in-depth rather than
+// stored raw) so a forgotten PIN can be recovered by signing back in.
+// Throws — and touches nothing local — on any failure, so a failed escrow
+// can never leave a device with encrypted data and no recovery path.
+async function escrowDek(dek: CryptoKey, accountPassword: string, translate: TranslateFn): Promise<void> {
+  if (!isSyncConfigured || !supabase) {
+    throw new Error(translate("settings.encryptionSyncRequired"));
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !sessionData.session?.user) {
+    throw new Error(translate("settings.encryptionSignInRequired"));
+  }
+  const userId = sessionData.session.user.id;
+  const email = sessionData.session.user.email;
+
+  // Nothing else here checks that `accountPassword` is actually correct —
+  // deriving a KEK from a wrong/mistyped password would still "succeed"
+  // and silently escrow an unrecoverable DEK, with no symptom until a
+  // different device tries to recover it later. Verifying it re-authenticates
+  // against Supabase up front turns that into a loud, immediate failure
+  // instead of a silent one discovered only during a future recovery.
+  if (email) {
+    const { error: verifyError } = await supabase.auth.signInWithPassword({ email, password: accountPassword });
+    if (verifyError) {
+      throw new Error(translate("settings.encryptionSyncPasswordIncorrect"));
+    }
+  }
+
+  const escrowSalt = generateRandomBytes(16);
+  const escrowKek = await deriveKek(accountPassword, escrowSalt, PBKDF2_ITERATIONS);
+  const wrapped = await wrapDek(dek, escrowKek);
+
+  const { error } = await supabase.from("user_encryption_keys").upsert({
+    user_id: userId,
+    wrapped_dek: wrapped.wrapped,
+    dek_iv: wrapped.iv,
+    escrow_salt: bytesToBase64(escrowSalt),
+    escrow_iterations: PBKDF2_ITERATIONS,
+  });
+
+  if (error) throw error;
+}
+
+// Re-encrypts every not-yet-migrated row in one table, in small committed
+// chunks. Idempotency is a per-row predicate — does this row already carry
+// encryptedContent? — not a cursor, so this is safe to blindly re-run from
+// scratch after any interruption; already-migrated rows are just skipped.
+export async function migrateTable(
+  table: SyncTableName,
+  dek: CryptoKey,
+  onChunk?: (rowsDone: number, rowsTotal: number) => void
+): Promise<void> {
+  const dexieTable = db.table<EncryptedRow, number>(table);
+  const plaintextKeys = PLAINTEXT_KEYS[table] ?? [];
+
+  const allRows: EncryptedRow[] = await dexieTable.toArray();
+  const pending = allRows.filter((row) => row.encryptedContent === undefined);
+
+  let done = 0;
+  onChunk?.(done, pending.length);
+
+  for (let i = 0; i < pending.length; i += CHUNK_SIZE) {
+    const chunk = pending.slice(i, i + CHUNK_SIZE);
+
+    const encryptedChunk = await Promise.all(
+      chunk.map((row) => encryptRow(dek, row, plaintextKeys as never[]))
+    );
+
+    // Stamp after encryption, atomically with persistence, so clock rollback
+    // cannot leave the old plaintext cloud version newer than this ciphertext.
+    await writeLocalSyncRows(dexieTable, encryptedChunk);
+    done += chunk.length;
+    onChunk?.(done, pending.length);
+  }
+}
+
+async function verifyTableMigrated(table: SyncTableName): Promise<boolean> {
+  const rows: EncryptedRow[] = await db.table(table).toArray();
+  return rows.every((row) => row.encryptedContent !== undefined);
+}
+
+export interface EnableEncryptionParams {
+  pin: string;
+  // Re-entered here even though the user is already signed in — Supabase
+  // never hands the plaintext password back after sign-in, and it's
+  // needed once, at this moment, to derive the escrow-wrapping key.
+  accountPassword: string;
+  onProgress?: (progress: MigrationProgress) => void;
+  translate: TranslateFn;
+}
+
+/**
+ * Turns on encryption-at-rest: escrows a new DEK to the user's Supabase
+ * account, wraps it locally with a PIN-derived key, then re-encrypts every
+ * existing row across all 12 synced tables. Safe to call again after any
+ * interruption — see migrateTable's idempotency predicate above.
+ */
+export async function enableEncryption({ pin, accountPassword, onProgress, translate }: EnableEncryptionParams): Promise<void> {
+  if (!useAuthStore.getState().user) {
+    throw new Error(translate("settings.encryptionSignInRequired"));
+  }
+  if (!useAppLockStore.getState().isEnabled()) {
+    throw new Error(translate("settings.encryptionPinRequired"));
+  }
+
+  await acquireMigrationLock();
+
+  try {
+    const alreadyAttached = useAppLockStore.getState().encryptionEnabled;
+
+    onProgress?.({ phase: "backup" });
+    downloadPlaintextBackup(await exportBackup());
+
+    let dek: CryptoKey;
+
+    if (alreadyAttached) {
+      // Resuming after an earlier interruption — a DEK was already
+      // generated, escrowed, and wrapped locally. Reuse the resident
+      // session key instead of generating (and escrowing) a second one,
+      // which would orphan every row already encrypted with the first.
+      const resident = useEncryptionSessionStore.getState().dek;
+      if (!resident) {
+        throw new Error(translate("settings.encryptionPartiallyEnabledLocked"));
+      }
+      dek = resident;
+    } else {
+      onProgress?.({ phase: "escrow" });
+      dek = await generateDek();
+      await escrowDek(dek, accountPassword, translate);
+      await useAppLockStore.getState().attachEncryption(pin, dek);
+    }
+
+    onProgress?.({ phase: "encrypting", tableIndex: 0, tableCount: ENCRYPTABLE_TABLES.length });
+    for (let i = 0; i < ENCRYPTABLE_TABLES.length; i++) {
+      const table = ENCRYPTABLE_TABLES[i];
+      await migrateTable(table, dek, (rowsDone, rowsTotal) => {
+        onProgress?.({
+          phase: "encrypting",
+          tableIndex: i,
+          tableCount: ENCRYPTABLE_TABLES.length,
+          currentTable: table,
+          rowsDone,
+          rowsTotal,
+        });
+      });
+    }
+
+    onProgress?.({ phase: "verifying" });
+    for (const table of ENCRYPTABLE_TABLES) {
+      const ok = await verifyTableMigrated(table);
+      if (!ok) {
+        throw new Error(translate("settings.encryptionVerificationFailed", { table }));
+      }
+    }
+
+    onProgress?.({ phase: "done" });
+    recordAudit("encryption", "enabled", { tableCount: ENCRYPTABLE_TABLES.length });
+
+    // Best-effort — propagating the new ciphertext promptly is nice to
+    // have, but a network hiccup right now shouldn't fail the migration
+    // itself (the periodic background sync will pick it up regardless).
+    useAuthStore.getState().sync().catch(() => {});
+  } finally {
+    await releaseMigrationLock();
+  }
+}

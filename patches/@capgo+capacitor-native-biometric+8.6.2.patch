@@ -1,0 +1,127 @@
+diff --git a/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/AuthActivity.java b/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/AuthActivity.java
+index b6c7c19..3a32b37 100644
+--- a/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/AuthActivity.java
++++ b/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/AuthActivity.java
+@@ -84,6 +84,13 @@ public class AuthActivity extends AppCompatActivity {
+         int rawMaxAttempts = getIntent().getIntExtra("maxAttempts", 1);
+         maxAttempts = Math.max(1, Math.min(5, rawMaxAttempts));
+ 
++        // Resolve the requested authenticator set before any validity-window
++        // Keystore operation. The key must be generated with the same strong
++        // fingerprint policy used by the prompt; otherwise some OEM keymasters
++        // reject the subsequent cipher init and report a misleading InvalidKeyException.
++        int[] allowedTypes = getIntent().getIntArrayExtra("allowedBiometryTypes");
++        authenticatorConfig = BiometricAuthenticatorConfig.fromAllowedTypes(allowedTypes);
++
+         String server = getIntent().getStringExtra("server");
+         if ("setSecureCredentials".equals(mode) || "setSecureData".equals(mode)) {
+             // Not yet persisted — this call establishes the mode for the alias.
+@@ -117,8 +124,6 @@ public class AuthActivity extends AppCompatActivity {
+             .setSubtitle(getIntent().hasExtra("subtitle") ? getIntent().getStringExtra("subtitle") : null)
+             .setDescription(getIntent().hasExtra("description") ? getIntent().getStringExtra("description") : null);
+ 
+-        int[] allowedTypes = getIntent().getIntArrayExtra("allowedBiometryTypes");
+-        authenticatorConfig = BiometricAuthenticatorConfig.fromAllowedTypes(allowedTypes);
+         builder.setAllowedAuthenticators(authenticatorConfig.promptAuthenticators);
+ 
+         if (authenticatorConfig.allowNegativeButton) {
+@@ -451,6 +456,7 @@ public class AuthActivity extends AppCompatActivity {
+                 key = getOrCreateCredentialKey(server, accessControl);
+                 cipher.init(Cipher.ENCRYPT_MODE, key);
+             }
++            authCipher = cipher;
+             return new BiometricPrompt.CryptoObject(cipher);
+         } catch (GeneralSecurityException | IOException e) {
+             return null;
+@@ -482,6 +488,7 @@ public class AuthActivity extends AppCompatActivity {
+                 prefs.edit().remove("secure_" + server).apply();
+                 return null;
+             }
++            authCipher = cipher;
+             return new BiometricPrompt.CryptoObject(cipher);
+         } catch (GeneralSecurityException | IOException e) {
+             return null;
+@@ -489,11 +496,33 @@ public class AuthActivity extends AppCompatActivity {
+     }
+ 
+     private void handleSetSecureCredentials(BiometricPrompt.AuthenticationResult result) {
+-        encryptAndStoreCredentials(result.getCryptoObject().getCipher());
++        Cipher cipher = authenticatedCipher(result);
++        if (cipher == null) {
++            finishActivity("error", 0, "Biometric crypto object unavailable");
++            return;
++        }
++        encryptAndStoreCredentials(cipher);
+     }
+ 
+     private void handleGetSecureCredentials(BiometricPrompt.AuthenticationResult result) {
+-        decryptAndReturnCredentials(result.getCryptoObject().getCipher());
++        Cipher cipher = authenticatedCipher(result);
++        if (cipher == null) {
++            finishActivity("error", 0, "Biometric crypto object unavailable");
++            return;
++        }
++        decryptAndReturnCredentials(cipher);
++    }
++
++    // A few Android biometric providers report a successful authentication with
++    // a null CryptoObject even though the cipher supplied to authenticate() is
++    // still the authenticated operation. Keep the cipher we created as a safe
++    // fallback instead of dereferencing a null result object and returning the
++    // opaque "...: null" error to the WebView.
++    private Cipher authenticatedCipher(BiometricPrompt.AuthenticationResult result) {
++        if (result != null && result.getCryptoObject() != null && result.getCryptoObject().getCipher() != null) {
++            return result.getCryptoObject().getCipher();
++        }
++        return authCipher;
+     }
+ 
+     private void encryptAndStoreCredentials(Cipher cipher) {
+@@ -635,6 +664,12 @@ public class AuthActivity extends AppCompatActivity {
+             if (e instanceof UserNotAuthenticatedException) {
+                 throw e;
+             }
++            if (!(e instanceof KeyPermanentlyInvalidatedException)) {
++                // Preserve the credential on transient/provider-specific
++                // failures. The user can retry instead of silently losing the
++                // only biometric copy of their PIN.
++                throw e;
++            }
+             // KeyPermanentlyInvalidatedException (biometric enrollment changed) — delete and recreate.
+             KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+             ks.load(null);
+@@ -662,6 +697,11 @@ public class AuthActivity extends AppCompatActivity {
+             if (e instanceof UserNotAuthenticatedException) {
+                 throw e;
+             }
++            if (!(e instanceof KeyPermanentlyInvalidatedException)) {
++                // Do not delete protected data for an opaque OEM/transient
++                // InvalidKeyException. It is recoverable by retrying the prompt.
++                throw e;
++            }
+             // Key was invalidated (e.g. biometric enrollment changed). Delete the unusable key
+             // and encrypted data so the user can re-enroll via setSecureCredentials.
+             KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
+diff --git a/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/BiometricAuthenticatorConfig.java b/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/BiometricAuthenticatorConfig.java
+index d0f7703..78af60e 100644
+--- a/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/BiometricAuthenticatorConfig.java
++++ b/node_modules/@capgo/capacitor-native-biometric/android/src/main/java/ee/forgr/biometric/BiometricAuthenticatorConfig.java
+@@ -95,7 +95,17 @@ public final class BiometricAuthenticatorConfig {
+     }
+ 
+     private static BiometricAuthenticatorConfig defaultBiometric() {
+-        return new BiometricAuthenticatorConfig(PROMPT_BIOMETRIC_ANY, keyAuthAny(), true, true);
++        // PATCHED (see /patches): the unpatched default mixes BIOMETRIC_STRONG with
++        // BIOMETRIC_WEAK, but AndroidX BiometricPrompt.authenticate(PromptInfo, CryptoObject)
++        // unconditionally throws IllegalArgumentException ("Crypto-based authentication is
++        // not supported for Class 2 (Weak) biometrics") the instant WEAK is included in the
++        // allowed authenticators alongside a CryptoObject — regardless of what's actually
++        // enrolled on the device. setCredentials()/getSecureCredentials() always hit this
++        // default (their JS options don't expose allowedBiometryTypes to override it), so
++        // every crypto-bound call crashed unconditionally. STRONG-only is exactly what this
++        // file's own explicit fingerprint-only case already narrows to below — it's a valid,
++        // non-crashing combination with a CryptoObject on every Android version.
++        return new BiometricAuthenticatorConfig(BiometricManager.Authenticators.BIOMETRIC_STRONG, keyAuthStrong(), true, true);
+     }
+ 
+     private static int keyAuthStrong() {

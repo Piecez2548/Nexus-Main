@@ -1,0 +1,158 @@
+import { describe, expect, it } from "vitest";
+import { parseSlipText } from "./slipParser";
+
+describe("parseSlipText", () => {
+  it("extracts amount, date, and recipient from a typical SCB-style slip", () => {
+    const text = `
+      SCB โอนเงินสำเร็จ
+      22/07/2569 14:35
+      โอนไปยัง นายสมชาย ใจดี
+      จำนวนเงิน
+      1,500.00 บาท
+      เลขที่รายการ 00123456789
+    `;
+
+    const result = parseSlipText(text);
+
+    expect(result.amount).toBe(1500);
+    expect(result.date).toBe("2026-07-22");
+    expect(result.recipient).toBe("นายสมชาย ใจดี");
+    expect(result.title).toBe("โอนเงินให้ นายสมชาย ใจดี");
+  });
+
+  it("parses a Thai long-form date with month name", () => {
+    const text = "โอนเงินสำเร็จ วันที่ 5 สิงหาคม 2569 เวลา 09:12\nจำนวน 250.50 บาท";
+
+    const result = parseSlipText(text);
+
+    expect(result.date).toBe("2026-08-05");
+    expect(result.amount).toBe(250.5);
+  });
+
+  it("converts a 2-digit Buddhist year", () => {
+    const text = "22/07/69\nถึง ร้านกาแฟ\n80.00 บาท";
+
+    const result = parseSlipText(text);
+
+    expect(result.date).toBe("2026-07-22");
+    expect(result.recipient).toBe("ร้านกาแฟ");
+  });
+
+  it("returns undefined fields when nothing matches", () => {
+    const result = parseSlipText("unreadable garbled text ###");
+
+    expect(result.amount).toBeUndefined();
+    expect(result.date).toBeUndefined();
+    expect(result.recipient).toBeUndefined();
+    expect(result.title).toBeUndefined();
+  });
+
+  it("ignores an account-number-like string with no decimal point as the amount", () => {
+    const text = "เลขบัญชี 1234567890\nจำนวนเงิน 99.00 บาท";
+
+    const result = parseSlipText(text);
+
+    expect(result.amount).toBe(99);
+  });
+
+  it("picks the currency-anchored amount, not an earlier decimal number", () => {
+    // A balance/other number appears first; the real amount is next to บาท.
+    const text = "ยอดคงเหลือ 5,520.00\nจำนวนเงิน 20.00 บาท\nเลขที่รายการ 015520";
+    expect(parseSlipText(text).amount).toBe(20);
+  });
+
+  it("reads an amount marked with the ฿ symbol", () => {
+    expect(parseSlipText("โอนสำเร็จ ฿20.00").amount).toBe(20);
+  });
+
+  it("extracts a shop-name merchant from a label-less slip (KBank bill layout)", () => {
+    const text = [
+      "จ่ายบิลสำเร็จ",
+      "นาย ภัทรพล ข",
+      "ธ.กสิกรไทย",
+      "SCB มณี SHOP (ร้านริญญ์น้ำ)",
+      "014000008031056",
+      "จำนวน 20.00 บาท",
+    ].join("\n");
+    const result = parseSlipText(text);
+    expect(result.recipient).toBe("SCB มณี SHOP (ร้านริญญ์น้ำ)");
+    expect(result.amount).toBe(20);
+  });
+
+  it("extracts the payee positionally on a label-less e-wallet top-up slip (K+ G-Wallet)", () => {
+    // No ร้าน/SHOP marker; the payee is the name line after the payer's account.
+    const text = [
+      "เติมเงินสำเร็จ",
+      "8 ส.ค. 69 18:27 น.",
+      "นาย ภัทรพล ข",
+      "ธ.กสิกรไทย",
+      "xxx-x-x5327-x",
+      "พร้อมเพย์ อี-วอลเล็ต / G-Wallet",
+      "006-xxxxxxxx-6996",
+      "เลขที่รายการ 016220182730CPM19695",
+      "จำนวน 200.00 บาท",
+      "ค่าธรรมเนียม 0.00 บาท",
+    ].join("\n");
+    const result = parseSlipText(text);
+    expect(result.recipient).toBe("พร้อมเพย์ อี-วอลเล็ต / G-Wallet");
+    expect(result.amount).toBe(200);
+    expect(result.date).toBe("2026-08-08");
+    expect(result.title).toBe("โอนเงินให้ พร้อมเพย์ อี-วอลเล็ต / G-Wallet");
+  });
+
+  it("skips the payee's own bank-label line and picks their name instead", () => {
+    const text = [
+      "โอนเงินสำเร็จ",
+      "นายสมชาย ใจดี",
+      "ธ.กสิกรไทย",
+      "xxx-x-x5327-x",
+      "ธ.ไทยพาณิชย์",
+      "สมหญิง รักดี",
+      "จำนวน 300.00 บาท",
+    ].join("\n");
+    expect(parseSlipText(text).recipient).toBe("สมหญิง รักดี");
+  });
+
+  it("does not fabricate a date from digits inside a masked account/reference number", () => {
+    const text = "โอนเงินสำเร็จ\nxxx-x-x5327-x 006-2-34567-6996\nจำนวน 50.00 บาท";
+    expect(parseSlipText(text).date).toBeUndefined();
+    expect(parseSlipText(text).amount).toBe(50);
+  });
+
+  it("recognises an account line with a short leading label (e.g. 'A/C:')", () => {
+    const text = [
+      "โอนเงินสำเร็จ",
+      "นายสมชาย ใจดี",
+      "ธ.กสิกรไทย",
+      "A/C: xxx-x-x5327-x",
+      "สมหญิง รักดี",
+      "จำนวน 150.00 บาท",
+    ].join("\n");
+    expect(parseSlipText(text).recipient).toBe("สมหญิง รักดี");
+  });
+
+  it("does not skip a real name that merely contains an amount-label word ('ยอด')", () => {
+    const text = [
+      "โอนเงินสำเร็จ",
+      "นายสมชาย ใจดี",
+      "ธ.กสิกรไทย",
+      "xxx-x-x5327-x",
+      "ยอดรัก คงยิ่งยง",
+      "จำนวน 100.00 บาท",
+    ].join("\n");
+    expect(parseSlipText(text).recipient).toBe("ยอดรัก คงยิ่งยง");
+  });
+
+  it("does not anchor the positional scan to a non-account labelled digit line (e.g. a phone number)", () => {
+    const text = [
+      "โอนเงินสำเร็จ",
+      "โทร: 0812345678",
+      "นายสมชาย ใจดี",
+      "ธ.กสิกรไทย",
+      "xxx-x-x5327-x",
+      "สมหญิง รักดี",
+      "จำนวน 100.00 บาท",
+    ].join("\n");
+    expect(parseSlipText(text).recipient).toBe("สมหญิง รักดี");
+  });
+});

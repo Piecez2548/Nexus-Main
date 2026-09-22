@@ -1,0 +1,794 @@
+import { describe, expect, it, beforeEach } from "vitest";
+import { exportBackup, importBackup, MAX_BACKUP_BYTES, MAX_BACKUP_ROWS, resetAllData } from "./backupService";
+import { db } from "./db";
+import { useAppLockStore } from "@/store/appLockStore";
+import { useEncryptionSessionStore } from "@/features/encryption/store/encryptionSessionStore";
+import { generateDek } from "@/features/encryption/crypto/encryption";
+import { EncryptionLockedError } from "@/database/encryptedRepository";
+
+const t = (key: string) => key;
+
+describe("backupService", () => {
+  beforeEach(async () => {
+    await Promise.all([
+      db.transactions.clear(),
+      db.accounts.clear(),
+      db.categories.clear(),
+      db.trades.clear(),
+      db.recipientProfiles.clear(),
+      db.merchants.clear(),
+      db.budgets.clear(),
+      db.goals.clear(),
+      db.transactionTemplates.clear(),
+      db.todos.clear(),
+      db.habits.clear(),
+      db.holdings.clear(),
+      db.calendarEvents.clear(),
+      db.scheduleItems.clear(),
+      db.goalMilestoneEvents.clear(),
+      db.vaultEntries.clear(),
+      db.workoutExercises.clear(),
+      db.workoutEntries.clear(),
+      db.netWorthItems.clear(),
+      db.netWorthSnapshots.clear(),
+      db.subscriptions.clear(),
+      db.budgetPeriodSnapshots.clear(),
+      db.strategies.clear(),
+      db.watchlistItems.clear(),
+      db.economicEvents.clear(),
+    ]);
+    useAppLockStore.setState({ encryptionEnabled: false, wrappedDek: null, kekSalt: null, kekIterations: null });
+    useEncryptionSessionStore.getState().clearDek();
+  });
+
+  it("exports all tables into a versioned JSON backup", async () => {
+    await db.accounts.add({ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" });
+    await db.transactions.add({
+      title: "Coffee",
+      amount: 58,
+      type: "expense",
+      category: "Food",
+      account: "Cash",
+      date: "2026-07-21",
+      status: "completed",
+    });
+
+    const json = await exportBackup();
+    const parsed = JSON.parse(json);
+
+    expect(parsed.version).toBe(1);
+    expect(parsed.data.accounts).toHaveLength(1);
+    expect(parsed.data.transactions).toHaveLength(1);
+    expect(parsed.data.transactions[0]).toMatchObject({ title: "Coffee", amount: 58 });
+  });
+
+  it("includes transactionTemplates and todos in the backup", async () => {
+    await db.todos.add({ title: "Pay rent", completed: false, priority: "medium" } as never);
+    await db.transactionTemplates.add({
+      name: "Coffee run",
+      title: "Coffee",
+      amount: 58,
+      type: "expense",
+      category: "Food",
+      account: "Cash",
+    } as never);
+
+    const json = await exportBackup();
+    const parsed = JSON.parse(json);
+
+    expect(parsed.data.todos).toHaveLength(1);
+    expect(parsed.data.todos[0]).toMatchObject({ title: "Pay rent" });
+    expect(parsed.data.transactionTemplates).toHaveLength(1);
+    expect(parsed.data.transactionTemplates[0]).toMatchObject({ name: "Coffee run" });
+  });
+
+  it("round-trips data through export then import", async () => {
+    await db.accounts.add({ name: "Bank", type: "bank", icon: "landmark", color: "#2563eb" });
+    await db.categories.add({ name: "Food", type: "expense", icon: "utensils", color: "#ef4444" });
+
+    const json = await exportBackup();
+
+    await db.accounts.clear();
+    await db.categories.clear();
+
+    await importBackup(json, t);
+
+    const accounts = await db.accounts.toArray();
+    const categories = await db.categories.toArray();
+
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].name).toBe("Bank");
+    expect(categories).toHaveLength(1);
+  });
+
+  it("completes an encrypted disaster-recovery drill across every user-content table", async () => {
+    const contentTables = [
+      "transactions",
+      "accounts",
+      "categories",
+      "trades",
+      "recipientProfiles",
+      "merchants",
+      "budgets",
+      "goals",
+      "transactionTemplates",
+      "todos",
+      "habits",
+      "holdings",
+      "calendarEvents",
+      "scheduleItems",
+      "goalMilestoneEvents",
+      "vaultEntries",
+      "workoutExercises",
+      "workoutEntries",
+      "netWorthItems",
+      "netWorthSnapshots",
+      "subscriptions",
+      "budgetPeriodSnapshots",
+      "strategies",
+      "watchlistItems",
+      "economicEvents",
+    ] as const;
+
+    const syncedTables = contentTables.filter((table) => table !== "merchants");
+    const data = Object.fromEntries(
+      contentTables.map((table, index) => {
+        const marker = `BACKUP-RESTORE-001:${table}`;
+        return [
+          table,
+          [
+            {
+              id: index + 101,
+              marker,
+              name: `${marker}:name`,
+              title: `${marker}:title`,
+              recipientKey: `${marker}:recipient`,
+              category: `${marker}:category`,
+              symbol: `T${index}`,
+              date: "2026-09-12",
+              eventDate: "2026-09-12",
+              parentRef: "BACKUP-RESTORE-001:shared-parent",
+              ...(table === "merchants"
+                ? {}
+                : {
+                    syncId: `backup-restore-001-${table}`,
+                    updatedAt: "2026-09-12T12:00:00.000Z",
+                  }),
+            },
+          ],
+        ];
+      })
+    );
+    const fixture = JSON.stringify({
+      version: 1,
+      exportedAt: "2026-09-12T12:00:00.000Z",
+      data,
+    });
+
+    const dek = await generateDek();
+    useAppLockStore.setState({ encryptionEnabled: true });
+    useEncryptionSessionStore.getState().setDek(dek);
+
+    await importBackup(fixture, t);
+
+    for (const table of syncedTables) {
+      const [raw] = (await db.table(table).toArray()) as Array<Record<string, unknown>>;
+      expect(raw.encryptedContent, `${table} should be encrypted at rest`).toBeDefined();
+      expect(raw.marker, `${table} marker should not remain plaintext`).toBeUndefined();
+    }
+    const [rawMerchant] = (await db.merchants.toArray()) as unknown as Array<Record<string, unknown>>;
+    expect(rawMerchant.marker).toBe("BACKUP-RESTORE-001:merchants");
+
+    const exportedBeforeLoss = JSON.parse(await exportBackup()) as { data: Record<string, unknown[]> };
+    expect(Object.keys(exportedBeforeLoss.data).sort()).toEqual([...contentTables].sort());
+
+    await Promise.all(contentTables.map((table) => db.table(table).clear()));
+    expect(await Promise.all(contentTables.map((table) => db.table(table).count()))).toEqual(
+      contentTables.map(() => 0)
+    );
+
+    await importBackup(JSON.stringify(exportedBeforeLoss), t);
+    const exportedAfterRestore = JSON.parse(await exportBackup()) as { data: Record<string, unknown[]> };
+
+    expect(exportedAfterRestore.data).toEqual(exportedBeforeLoss.data);
+    expect(await Promise.all(contentTables.map((table) => db.table(table).count()))).toEqual(
+      contentTables.map(() => 1)
+    );
+  });
+
+  it("imports a legacy backup file that predates transactionTemplates/todos", async () => {
+    const legacyBackup = {
+      version: 1,
+      exportedAt: "2025-01-01T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" }],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+        // transactionTemplates/todos deliberately absent
+      },
+    };
+
+    await expect(importBackup(JSON.stringify(legacyBackup), t)).resolves.not.toThrow();
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.todos.count()).toBe(0);
+  });
+
+  it("imports a legacy backup file that predates habits", async () => {
+    const legacyBackup = {
+      version: 1,
+      exportedAt: "2025-06-01T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" }],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+        transactionTemplates: [],
+        todos: [],
+        // habits deliberately absent
+      },
+    };
+
+    await expect(importBackup(JSON.stringify(legacyBackup), t)).resolves.not.toThrow();
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.habits.count()).toBe(0);
+  });
+
+  it("imports a legacy backup file that predates holdings", async () => {
+    const legacyBackup = {
+      version: 1,
+      exportedAt: "2026-01-01T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" }],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+        transactionTemplates: [],
+        todos: [],
+        habits: [],
+        // holdings deliberately absent
+      },
+    };
+
+    await expect(importBackup(JSON.stringify(legacyBackup), t)).resolves.not.toThrow();
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.holdings.count()).toBe(0);
+  });
+
+  it("imports a legacy backup file that predates calendarEvents", async () => {
+    const legacyBackup = {
+      version: 1,
+      exportedAt: "2026-07-01T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" }],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+        transactionTemplates: [],
+        todos: [],
+        habits: [],
+        holdings: [],
+        // calendarEvents deliberately absent
+      },
+    };
+
+    await expect(importBackup(JSON.stringify(legacyBackup), t)).resolves.not.toThrow();
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.calendarEvents.count()).toBe(0);
+  });
+
+  it("imports a legacy backup file that predates goalMilestoneEvents", async () => {
+    const legacyBackup = {
+      version: 1,
+      exportedAt: "2026-07-30T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" }],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+        transactionTemplates: [],
+        todos: [],
+        habits: [],
+        holdings: [],
+        calendarEvents: [],
+        scheduleItems: [],
+        // goalMilestoneEvents deliberately absent
+      },
+    };
+
+    await expect(importBackup(JSON.stringify(legacyBackup), t)).resolves.not.toThrow();
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.goalMilestoneEvents.count()).toBe(0);
+  });
+
+  it("imports a legacy backup file that predates vaultEntries", async () => {
+    const legacyBackup = {
+      version: 1,
+      exportedAt: "2026-08-01T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" }],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+        transactionTemplates: [],
+        todos: [],
+        habits: [],
+        holdings: [],
+        calendarEvents: [],
+        scheduleItems: [],
+        goalMilestoneEvents: [],
+        // vaultEntries, workoutExercises, workoutEntries deliberately absent
+      },
+    };
+
+    await expect(importBackup(JSON.stringify(legacyBackup), t)).resolves.not.toThrow();
+    expect(await db.accounts.count()).toBe(1);
+    expect(await db.vaultEntries.count()).toBe(0);
+    expect(await db.workoutExercises.count()).toBe(0);
+    expect(await db.workoutEntries.count()).toBe(0);
+  });
+
+  it("rejects a malformed backup without touching existing data", async () => {
+    await db.accounts.add({ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" });
+
+    await expect(importBackup("not json", t)).rejects.toThrow();
+    await expect(importBackup(JSON.stringify({ foo: "bar" }), t)).rejects.toThrow();
+
+    const accounts = await db.accounts.toArray();
+    expect(accounts).toHaveLength(1);
+  });
+
+  it("rejects oversized, unsupported, invalid-date, primitive-row, and excessive-row backups", async () => {
+    const base = {
+      version: 1,
+      exportedAt: "2026-09-09T00:00:00.000Z",
+      data: { transactions: [], accounts: [], categories: [], trades: [], recipientProfiles: [], merchants: [], budgets: [], goals: [] },
+    };
+
+    await expect(importBackup("x".repeat(MAX_BACKUP_BYTES + 1), t)).rejects.toThrow("settings.backupTooLarge");
+    await expect(importBackup(JSON.stringify({ ...base, version: 2 }), t)).rejects.toThrow("settings.backupInvalidStructure");
+    await expect(importBackup(JSON.stringify({ ...base, exportedAt: "not-a-date" }), t)).rejects.toThrow("settings.backupInvalidStructure");
+    await expect(importBackup(JSON.stringify({ ...base, data: { ...base.data, accounts: ["invalid"] } }), t)).rejects.toThrow("settings.backupInvalidStructure");
+    await expect(importBackup(JSON.stringify({ ...base, data: { ...base.data, accounts: Array(MAX_BACKUP_ROWS + 1).fill({}) } }), t)).rejects.toThrow("settings.backupInvalidStructure");
+  });
+
+  it("resetAllData clears everything (including templates/todos) then reseeds defaults", async () => {
+    await db.transactions.add({
+      title: "Custom",
+      amount: 100,
+      type: "expense",
+      category: "Food",
+      account: "Cash",
+      date: "2026-07-21",
+      status: "completed",
+    });
+    await db.todos.add({ title: "Leftover todo", completed: false, priority: "low" } as never);
+    await db.habits.add({ name: "Leftover habit", frequency: "daily", completedDates: [] } as never);
+    await db.holdings.add({ symbol: "AAPL", market: "stocks", quantity: 10, avgCostPrice: 100 } as never);
+    await db.calendarEvents.add({ title: "Leftover event", startAt: "2026-07-21T09:00" } as never);
+    await db.goalMilestoneEvents.add({ goalSyncId: "abc", goalName: "MacBook", tier: 50, reachedAt: "2026-07-21T00:00:00.000Z" });
+    await db.vaultEntries.add({ type: "note", title: "Leftover note", createdAt: "2026-07-21T00:00:00.000Z" } as never);
+    await db.workoutExercises.add({
+      name: "Leftover exercise",
+      category: "strength",
+      icon: "dumbbell",
+      color: "#3b82f6",
+      createdAt: "2026-07-21T00:00:00.000Z",
+    } as never);
+    await db.workoutEntries.add({
+      exerciseName: "Leftover exercise",
+      date: "2026-07-21",
+      caloriesBurned: 10,
+      createdAt: "2026-07-21T00:00:00.000Z",
+    } as never);
+
+    await resetAllData();
+
+    const transactions = await db.transactions.toArray();
+    const accounts = await db.accounts.toArray();
+    const categories = await db.categories.toArray();
+    const todos = await db.todos.toArray();
+    const habits = await db.habits.toArray();
+    const holdings = await db.holdings.toArray();
+    const calendarEvents = await db.calendarEvents.toArray();
+    const goalMilestoneEvents = await db.goalMilestoneEvents.toArray();
+    const vaultEntries = await db.vaultEntries.toArray();
+    const workoutExercises = await db.workoutExercises.toArray();
+    const workoutEntries = await db.workoutEntries.toArray();
+
+    expect(transactions).toHaveLength(0);
+    expect(todos).toHaveLength(0);
+    expect(habits).toHaveLength(0);
+    expect(holdings).toHaveLength(0);
+    expect(calendarEvents).toHaveLength(0);
+    expect(goalMilestoneEvents).toHaveLength(0);
+    expect(vaultEntries).toHaveLength(0);
+    expect(workoutExercises).toHaveLength(0);
+    expect(workoutEntries).toHaveLength(0);
+    expect(accounts.length).toBeGreaterThan(0);
+    expect(categories.length).toBeGreaterThan(0);
+  });
+
+  // Regression: resetAllData() used a bare .clear() on every table, never
+  // calling recordTombstone() -- "Reset All Data" promises a permanent,
+  // irreversible deletion (see its own confirm-dialog copy), but the data
+  // silently survived on the server and every other signed-in device.
+  it("resetAllData tombstones every previously-synced row so the deletion propagates to sync", async () => {
+    await db.syncTombstones.clear();
+    await db.syncState.clear();
+    await db.transactions.add({
+      title: "Synced expense",
+      amount: 100,
+      type: "expense",
+      category: "Food",
+      account: "Cash",
+      date: "2026-07-21",
+      status: "completed",
+      syncId: "tx-to-be-reset",
+      updatedAt: "2026-07-21T00:00:00.000Z",
+    });
+    // A row with no syncId at all (never synced) has nothing to propagate --
+    // recordTombstone() itself is a no-op for it, confirmed here too.
+    await db.transactions.add({
+      title: "Never synced",
+      amount: 20,
+      type: "expense",
+      account: "Cash",
+      date: "2026-07-21",
+      status: "completed",
+    });
+
+    await resetAllData();
+
+    const tombstones = await db.syncTombstones.toArray();
+    expect(tombstones.find((t) => t.syncId === "tx-to-be-reset")).toMatchObject({ table: "transactions" });
+    expect(tombstones).toHaveLength(1); // only the synced row, not the never-synced one
+  });
+
+  // Regression: my own earlier fix (commit 20175c3) gated the sync engine's
+  // per-table backfill scan behind a permanent one-time flag -- but
+  // resetAllData() never cleared it, so on a device that had already
+  // synced, the freshly reseeded default accounts/categories (written via
+  // seedDatabase()'s raw bulkAdd, no syncId) would never get stamped or
+  // reach any other device again, silently, forever.
+  it("resetAllData clears every table's backfill-complete flag so reseeded defaults can sync again", async () => {
+    await db.syncState.put({ key: "backfill:accounts:complete", value: "true" });
+    await db.syncState.put({ key: "backfill:categories:complete", value: "true" });
+
+    await resetAllData();
+
+    expect(await db.syncState.get("backfill:accounts:complete")).toBeUndefined();
+    expect(await db.syncState.get("backfill:categories:complete")).toBeUndefined();
+  });
+
+  // Regression: importBackup() also used a bare .clear() with no
+  // tombstoning -- a row present locally before the import but absent from
+  // the backup being imported over it (a genuine removal, e.g. importing an
+  // older snapshot) would silently survive on the server/other devices too.
+  it("importBackup tombstones a row that existed locally but is absent from the imported backup", async () => {
+    await db.syncTombstones.clear();
+    await db.accounts.add({
+      name: "Not in the backup",
+      type: "cash",
+      icon: "wallet",
+      color: "#16a34a",
+      syncId: "removed-by-import",
+      updatedAt: "2026-07-21T00:00:00.000Z",
+    });
+
+    const backup = {
+      version: 1,
+      exportedAt: "2026-07-22T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+      },
+    };
+
+    await importBackup(JSON.stringify(backup), t);
+
+    const tombstones = await db.syncTombstones.toArray();
+    expect(tombstones.find((tomb) => tomb.syncId === "removed-by-import")).toMatchObject({ table: "accounts" });
+  });
+
+  it("importBackup does NOT tombstone a row being replaced by the same syncId in the incoming backup", async () => {
+    await db.syncTombstones.clear();
+    await db.accounts.add({
+      name: "Old name",
+      type: "cash",
+      icon: "wallet",
+      color: "#16a34a",
+      syncId: "kept-across-import",
+      updatedAt: "2026-07-21T00:00:00.000Z",
+    });
+
+    const backup = {
+      version: 1,
+      exportedAt: "2026-07-22T00:00:00.000Z",
+      data: {
+        transactions: [],
+        accounts: [
+          {
+            name: "Updated name",
+            type: "cash",
+            icon: "wallet",
+            color: "#16a34a",
+            syncId: "kept-across-import",
+            updatedAt: "2026-07-22T00:00:00.000Z",
+          },
+        ],
+        categories: [],
+        trades: [],
+        recipientProfiles: [],
+        merchants: [],
+        budgets: [],
+        goals: [],
+      },
+    };
+
+    await importBackup(JSON.stringify(backup), t);
+
+    const tombstones = await db.syncTombstones.toArray();
+    expect(tombstones.find((tomb) => tomb.syncId === "kept-across-import")).toBeUndefined();
+    const accounts = await db.accounts.toArray();
+    expect(accounts[0].name).toBe("Updated name");
+  });
+
+  describe("encryption compatibility", () => {
+    it("exports fully decrypted, human-readable data even when encryption is enabled", async () => {
+      const dek = await generateDek();
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().setDek(dek);
+
+      const { transactionRepository } = await import("@/features/finance/repositories/transactionRepository");
+      await transactionRepository.add({
+        title: "Coffee",
+        amount: 58,
+        type: "expense",
+        category: "Food",
+        account: "Cash",
+        date: "2026-07-21",
+        status: "completed",
+      });
+
+      // Confirm the underlying row really is encrypted...
+      const rawRows = await db.transactions.toArray();
+      expect(rawRows[0]).toHaveProperty("encryptedContent");
+
+      // ...but the backup is plaintext regardless.
+      const json = await exportBackup();
+      const parsed = JSON.parse(json);
+      expect(parsed.data.transactions[0]).not.toHaveProperty("encryptedContent");
+      expect(parsed.data.transactions[0]).toMatchObject({ title: "Coffee", amount: 58 });
+    });
+
+    it("throws EncryptionLockedError when exporting while encryption is enabled but locked", async () => {
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().clearDek();
+
+      await expect(exportBackup()).rejects.toThrow(EncryptionLockedError);
+    });
+
+    it("re-encrypts imported rows when encryption is enabled at import time", async () => {
+      await db.accounts.add({ name: "Cash", type: "cash", icon: "wallet", color: "#16a34a" });
+      const json = await exportBackup(); // plaintext backup, encryption off
+
+      await db.accounts.clear();
+
+      const dek = await generateDek();
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().setDek(dek);
+
+      await importBackup(json, t);
+
+      const rawRows = await db.accounts.toArray();
+      expect(rawRows).toHaveLength(1);
+      expect(rawRows[0]).toHaveProperty("encryptedContent");
+      expect((rawRows[0] as unknown as { name?: string }).name).toBeUndefined();
+
+      const { accountRepository } = await import("@/features/finance/repositories/accountRepository");
+      const decrypted = await accountRepository.getAll();
+      expect(decrypted[0]).toMatchObject({ name: "Cash" });
+    });
+
+    it("includes vaultEntries in the backup and re-encrypts them correctly on import (previously missing entirely)", async () => {
+      const dek = await generateDek();
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().setDek(dek);
+
+      const { vaultEntryRepository } = await import("@/features/vault/repositories/vaultEntryRepository");
+      await vaultEntryRepository.add({
+        type: "password",
+        title: "Gmail",
+        username: "me@example.com",
+        password: "correct-horse-battery-staple",
+        createdAt: "2026-08-17T00:00:00.000Z",
+      });
+
+      const json = await exportBackup();
+      const parsed = JSON.parse(json);
+      expect(parsed.data.vaultEntries).toHaveLength(1);
+      // The backup itself is plaintext regardless of encryption being on --
+      // same guarantee as every other table.
+      expect(parsed.data.vaultEntries[0]).toMatchObject({ title: "Gmail", password: "correct-horse-battery-staple" });
+      expect(parsed.data.vaultEntries[0]).not.toHaveProperty("encryptedContent");
+
+      await db.vaultEntries.clear();
+      await importBackup(json, t);
+
+      const rawRows = await db.vaultEntries.toArray();
+      expect(rawRows).toHaveLength(1);
+      expect(rawRows[0]).toHaveProperty("encryptedContent");
+      expect((rawRows[0] as unknown as { title?: string }).title).toBeUndefined();
+
+      const decrypted = await vaultEntryRepository.getAll();
+      expect(decrypted[0]).toMatchObject({ title: "Gmail", password: "correct-horse-battery-staple" });
+    });
+
+    it("includes workoutExercises and workoutEntries in the backup and re-encrypts them correctly on import (previously missing entirely)", async () => {
+      const dek = await generateDek();
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().setDek(dek);
+
+      const { workoutExerciseRepository } = await import("@/features/workouts/repositories/workoutExerciseRepository");
+      const { workoutEntryRepository } = await import("@/features/workouts/repositories/workoutEntryRepository");
+      await workoutExerciseRepository.add({
+        name: "Push-up",
+        category: "strength",
+        icon: "dumbbell",
+        color: "#3b82f6",
+        caloriesPerRep: 0.5,
+        createdAt: "2026-08-17T00:00:00.000Z",
+      });
+      await workoutEntryRepository.add({
+        exerciseName: "Push-up",
+        date: "2026-08-17",
+        reps: 10,
+        rounds: 3,
+        caloriesBurned: 15,
+        createdAt: "2026-08-17T00:00:00.000Z",
+      });
+
+      const json = await exportBackup();
+      const parsed = JSON.parse(json);
+      expect(parsed.data.workoutExercises).toHaveLength(1);
+      expect(parsed.data.workoutEntries).toHaveLength(1);
+      // The backup itself is plaintext regardless of encryption being on --
+      // same guarantee as every other table.
+      expect(parsed.data.workoutExercises[0]).toMatchObject({ name: "Push-up" });
+      expect(parsed.data.workoutExercises[0]).not.toHaveProperty("encryptedContent");
+      expect(parsed.data.workoutEntries[0]).toMatchObject({ exerciseName: "Push-up", reps: 10 });
+      expect(parsed.data.workoutEntries[0]).not.toHaveProperty("encryptedContent");
+
+      await db.workoutExercises.clear();
+      await db.workoutEntries.clear();
+      await importBackup(json, t);
+
+      const rawExercises = await db.workoutExercises.toArray();
+      expect(rawExercises).toHaveLength(1);
+      expect(rawExercises[0]).toHaveProperty("encryptedContent");
+      expect((rawExercises[0] as unknown as { name?: string }).name).toBeUndefined();
+
+      const rawEntries = await db.workoutEntries.toArray();
+      expect(rawEntries).toHaveLength(1);
+      expect(rawEntries[0]).toHaveProperty("encryptedContent");
+      expect((rawEntries[0] as unknown as { exerciseName?: string }).exerciseName).toBeUndefined();
+
+      const decryptedExercises = await workoutExerciseRepository.getAll();
+      expect(decryptedExercises[0]).toMatchObject({ name: "Push-up" });
+      const decryptedEntries = await workoutEntryRepository.getAll();
+      expect(decryptedEntries[0]).toMatchObject({ exerciseName: "Push-up", reps: 10 });
+    });
+
+    it("includes strategies, watchlistItems, and economicEvents in the backup and re-encrypts them correctly on import", async () => {
+      const dek = await generateDek();
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().setDek(dek);
+
+      const { strategyRepository } = await import("@/features/trading/repositories/strategyRepository");
+      const { watchlistRepository } = await import("@/features/trading/repositories/watchlistRepository");
+      const { economicEventRepository } = await import("@/features/trading/repositories/economicEventRepository");
+
+      await strategyRepository.add({ name: "Breakout Pro", entryRules: "Close above resistance" });
+      await watchlistRepository.add({ symbol: "AAPL", market: "stocks", targetPrice: 200 });
+      await economicEventRepository.add({ title: "FOMC Meeting", eventDate: "2099-01-15", impact: "high" });
+
+      const json = await exportBackup();
+      const parsed = JSON.parse(json);
+      expect(parsed.data.strategies).toHaveLength(1);
+      expect(parsed.data.watchlistItems).toHaveLength(1);
+      expect(parsed.data.economicEvents).toHaveLength(1);
+      // The backup itself is plaintext regardless of encryption being on --
+      // same guarantee as every other table.
+      expect(parsed.data.strategies[0]).toMatchObject({ name: "Breakout Pro" });
+      expect(parsed.data.strategies[0]).not.toHaveProperty("encryptedContent");
+      expect(parsed.data.watchlistItems[0]).toMatchObject({ symbol: "AAPL", targetPrice: 200 });
+      expect(parsed.data.watchlistItems[0]).not.toHaveProperty("encryptedContent");
+      expect(parsed.data.economicEvents[0]).toMatchObject({ title: "FOMC Meeting", impact: "high" });
+      expect(parsed.data.economicEvents[0]).not.toHaveProperty("encryptedContent");
+
+      await db.strategies.clear();
+      await db.watchlistItems.clear();
+      await db.economicEvents.clear();
+      await importBackup(json, t);
+
+      const rawStrategies = await db.strategies.toArray();
+      expect(rawStrategies).toHaveLength(1);
+      expect(rawStrategies[0]).toHaveProperty("encryptedContent");
+      expect((rawStrategies[0] as unknown as { name?: string }).name).toBeUndefined();
+
+      const rawWatchlist = await db.watchlistItems.toArray();
+      expect(rawWatchlist).toHaveLength(1);
+      expect(rawWatchlist[0]).toHaveProperty("encryptedContent");
+      expect((rawWatchlist[0] as unknown as { symbol?: string }).symbol).toBeUndefined();
+
+      const rawEvents = await db.economicEvents.toArray();
+      expect(rawEvents).toHaveLength(1);
+      expect(rawEvents[0]).toHaveProperty("encryptedContent");
+      expect((rawEvents[0] as unknown as { title?: string }).title).toBeUndefined();
+
+      const decryptedStrategies = await strategyRepository.getAll();
+      expect(decryptedStrategies[0]).toMatchObject({ name: "Breakout Pro" });
+      const decryptedWatchlist = await watchlistRepository.getAll();
+      expect(decryptedWatchlist[0]).toMatchObject({ symbol: "AAPL", targetPrice: 200 });
+      const decryptedEvents = await economicEventRepository.getAll();
+      expect(decryptedEvents[0]).toMatchObject({ title: "FOMC Meeting", impact: "high" });
+    });
+
+    it("keeps plaintextKeys (e.g. recipientKey) unencrypted after a re-encrypting import", async () => {
+      await db.recipientProfiles.add({
+        recipientKey: "0812345678",
+        alias: "Somchai",
+        category: "Food",
+        account: "Cash",
+        transactionCount: 1,
+        totalAmount: 100,
+        lastUsedDate: "2026-07-21",
+        confidenceScore: 1,
+      });
+      const json = await exportBackup();
+
+      await db.recipientProfiles.clear();
+
+      const dek = await generateDek();
+      useAppLockStore.setState({ encryptionEnabled: true });
+      useEncryptionSessionStore.getState().setDek(dek);
+
+      await importBackup(json, t);
+
+      const rawRow = await db.recipientProfiles.where("recipientKey").equals("0812345678").first();
+      expect(rawRow).toHaveProperty("encryptedContent");
+      expect((rawRow as unknown as { alias?: string })?.alias).toBeUndefined();
+    });
+  });
+});

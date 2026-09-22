@@ -1,0 +1,335 @@
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { ChevronDown } from "lucide-react";
+
+import {
+  transactionSchema,
+  type TransactionFormData,
+} from "@/features/finance/schemas/transactionSchema";
+
+import { useTransactionStore } from "@/features/finance/store/transactionStore";
+import { useAccountStore } from "@/features/finance/store/accountStore";
+import { useCategoryStore } from "@/features/finance/store/categoryStore";
+import { useUIStore } from "@/features/finance/store/uiStore";
+import { recipientProfileService } from "@/features/finance/services/recipientProfileService";
+import { toErrorMessage } from "@/utils/asyncState";
+import { useToast } from "@/hooks/useToast";
+import { toLocalDateString } from "@/utils/localDate";
+
+import FormField from "@/components/ui/FormField";
+import LoadingState from "@/components/ui/LoadingState";
+import ErrorState from "@/components/ui/ErrorState";
+import TransactionMetaFields from "@/features/finance/components/TransactionMetaFields";
+import RecurringField from "@/features/finance/components/RecurringField";
+import RecipientSuggestionField from "@/features/finance/components/RecipientSuggestionField";
+import { useTranslation } from "@/i18n/useTranslation";
+
+const inputClassName =
+  "w-full rounded-xl border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 p-3 outline-none focus:border-brand-500";
+
+const TYPE_LABEL_KEYS: Record<TransactionFormData["type"], string> = {
+  expense: "transactions.expense",
+  income: "transactions.income",
+  transfer: "transactions.transfer",
+  refund: "transactions.refund",
+  adjustment: "transactions.adjustment",
+};
+
+const blankValues: TransactionFormData = {
+  title: "",
+  amount: 0,
+  type: "expense",
+  category: "",
+  account: "Cash",
+  toAccount: "",
+  date: toLocalDateString(new Date()),
+  time: "",
+  tags: [],
+  attachment: undefined,
+  note: "",
+  recipient: "",
+  status: "completed",
+  recurring: null,
+};
+
+export default function TransactionForm() {
+  const { addTransaction, updateTransaction } = useTransactionStore();
+
+  const {
+    isTransactionDrawerOpen,
+    selectedTransaction,
+    draftTransaction,
+    closeTransactionDrawer,
+  } = useUIStore();
+
+  const {
+    accounts,
+    error: accountsError,
+    loadAccounts,
+  } = useAccountStore();
+
+  const {
+    categories,
+    error: categoriesError,
+    loadCategories,
+  } = useCategoryStore();
+
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const toast = useToast();
+  const { t } = useTranslation();
+  const schema = useMemo(() => transactionSchema(t), [t]);
+
+  useEffect(() => {
+    loadAccounts();
+    loadCategories();
+  }, [loadAccounts, loadCategories]);
+
+  // Tracks whether this mounted form has *ever* seen real accounts/categories
+  // data — deliberately based on the data itself, not the `loading` flags,
+  // since `loading` is also `false` before the very first load has even
+  // started (indistinguishable from "already finished"). Once both arrays
+  // have data, this stays true for the life of this mounted form, so a
+  // later background refresh of these shared, app-wide stores (e.g. the
+  // periodic cross-device sync, which reloads every store) never again
+  // replaces the form with a spinner and wipes out what the user is typing.
+  useEffect(() => {
+    if (accounts.length > 0 && categories.length > 0) {
+      setHasLoadedOnce(true);
+    }
+  }, [accounts.length, categories.length]);
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<TransactionFormData>({
+    resolver: zodResolver(schema),
+    defaultValues: blankValues,
+  });
+
+  useEffect(() => {
+    // Waits for accounts/categories to actually have data before applying
+    // account/category values — react-hook-form only reliably pushes a
+    // value onto a <select> that's already registered with a matching
+    // <option>. Resetting while those arrays are still empty would set the
+    // value on a mount that hasn't happened yet, and once the options
+    // arrive later, nothing re-applies it — the field is left blank.
+    if (accounts.length === 0 || categories.length === 0 || !isTransactionDrawerOpen) return;
+
+    reset(selectedTransaction ?? { ...blankValues, ...draftTransaction });
+    setSubmitError(null);
+    // Imported scans and template drafts already carry useful metadata (date,
+    // recipient, note), so keep those details visible for review. A blank
+    // add flow stays focused on the essential fields.
+    setShowAdvanced(Boolean(selectedTransaction || draftTransaction));
+  }, [isTransactionDrawerOpen, selectedTransaction, draftTransaction, reset, accounts.length, categories.length]);
+
+  const type = watch("type");
+  const needsCategory = type === "income" || type === "expense";
+  const isTransfer = type === "transfer";
+
+  async function onSubmit(data: TransactionFormData) {
+    setSubmitError(null);
+    const isEditing = selectedTransaction?.id !== undefined;
+
+    try {
+      if (selectedTransaction?.id !== undefined) {
+        // Preserve importer metadata that has no visible form control (the
+        // verified QR payload is used for repeat-scan deduplication).
+        await updateTransaction(selectedTransaction.id, { ...selectedTransaction, ...data });
+      } else {
+        await addTransaction(data);
+      }
+
+      if (data.recipient && data.category) {
+        // Learning Engine: remember this recipient's category so the Rule
+        // Engine can auto-apply it next time. Best-effort — a failure here
+        // shouldn't block the transaction that already saved successfully.
+        recipientProfileService
+          .recordUsage({
+            recipientKey: data.recipient,
+            alias: data.title,
+            category: data.category,
+            account: data.account,
+            amount: data.amount,
+            date: data.date,
+          })
+          .catch(() => {});
+      }
+
+      reset(blankValues);
+      closeTransactionDrawer();
+      toast.success(isEditing ? t("transactions.updatedSuccess") : t("transactions.savedSuccess"));
+    } catch (err) {
+      const message = toErrorMessage(err);
+      setSubmitError(message);
+      toast.error(message);
+    }
+  }
+
+  if (!hasLoadedOnce && (accounts.length === 0 || categories.length === 0)) {
+    return <LoadingState label={t("transactions.loadingData")} />;
+  }
+
+  if (accountsError || categoriesError) {
+    return (
+      <ErrorState
+        message={accountsError ?? categoriesError ?? t("transactions.loadFailed")}
+        onRetry={() => {
+          loadAccounts();
+          loadCategories();
+        }}
+      />
+    );
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="space-y-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6"
+    >
+      <h2 className="text-xl font-bold">
+        {selectedTransaction ? t("transactions.editTransaction") : t("transactions.addTransaction")}
+      </h2>
+
+      {!selectedTransaction && (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {t("transactions.quickEntryHint")}
+        </p>
+      )}
+
+      <FormField label={t("common.type")} htmlFor="transaction-type">
+        <select id="transaction-type" {...register("type")} className={inputClassName}>
+          {Object.entries(TYPE_LABEL_KEYS).map(([value, labelKey]) => (
+            <option key={value} value={value}>
+              {t(labelKey)}
+            </option>
+          ))}
+        </select>
+      </FormField>
+
+      <FormField label={t("transactions.itemName")} htmlFor="transaction-title" error={errors.title?.message}>
+        <input
+          id="transaction-title"
+          {...register("title")}
+          placeholder={t("transactions.itemNamePlaceholder")}
+          className={inputClassName}
+        />
+      </FormField>
+
+      <FormField label={t("common.amount")} htmlFor="transaction-amount" error={errors.amount?.message}>
+        <input
+          id="transaction-amount"
+          type="number"
+          {...register("amount", {
+            valueAsNumber: true,
+          })}
+          placeholder="0"
+          className={inputClassName}
+        />
+      </FormField>
+
+      {needsCategory && (
+        <FormField label={t("common.category")} htmlFor="transaction-category" error={errors.category?.message}>
+          <select id="transaction-category" {...register("category")} className={inputClassName}>
+            <option value="">{t("transactions.selectCategory")}</option>
+
+            {categories.map((category) => (
+              <option key={category.id} value={category.name}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
+
+      <FormField label={isTransfer ? t("transactions.fromAccount") : t("common.account")} htmlFor="transaction-account">
+        <select id="transaction-account" {...register("account")} className={inputClassName}>
+          <option value="">{t("transactions.selectAccount")}</option>
+
+          {accounts.map((account) => (
+            <option key={account.id} value={account.name}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </FormField>
+
+      {isTransfer && (
+        <FormField label={t("transactions.toAccount")} htmlFor="transaction-to-account" error={errors.toAccount?.message}>
+          <select id="transaction-to-account" {...register("toAccount")} className={inputClassName}>
+            <option value="">{t("transactions.selectToAccount")}</option>
+
+            {accounts.map((account) => (
+              <option key={account.id} value={account.name}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
+
+      {needsCategory && (
+        <RecipientSuggestionField register={register} watch={watch} setValue={setValue} showInput={showAdvanced} />
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((v) => !v)}
+        aria-expanded={showAdvanced}
+        aria-controls="transaction-advanced-fields"
+        className="flex min-h-11 items-center gap-1 rounded-xl px-2 text-sm font-medium text-brand-600 transition hover:bg-brand-600/10 dark:text-brand-400"
+      >
+        <ChevronDown size={16} className={`transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+        {showAdvanced ? t("transactions.showLess") : t("transactions.showMore")}
+      </button>
+
+      {showAdvanced && (
+        <div id="transaction-advanced-fields" className="space-y-4 rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField label={t("common.date")} htmlFor="transaction-date">
+              <input
+                id="transaction-date"
+                type="date"
+                {...register("date")}
+                className={inputClassName}
+              />
+            </FormField>
+
+            <FormField label={t("transactions.time")} htmlFor="transaction-time">
+              <input
+                id="transaction-time"
+                type="time"
+                {...register("time")}
+                className={inputClassName}
+              />
+            </FormField>
+          </div>
+
+          <TransactionMetaFields register={register} />
+
+          <RecurringField control={control} />
+        </div>
+      )}
+
+      {submitError && (
+        <p className="text-sm text-red-500">{submitError}</p>
+      )}
+
+      <button
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full rounded-xl py-3 font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 nexus-primary-action"
+      >
+        {isSubmitting ? t("transactions.saving") : t("common.save")}
+      </button>
+    </form>
+  );
+}

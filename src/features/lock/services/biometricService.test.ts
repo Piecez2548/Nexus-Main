@@ -1,0 +1,192 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+const mockIsNativePlatform = vi.fn();
+const mockIsAvailable = vi.fn();
+const mockSetCredentials = vi.fn();
+const mockGetSecureCredentials = vi.fn();
+const mockGetCredentials = vi.fn();
+const mockVerifyIdentity = vi.fn();
+const mockDeleteCredentials = vi.fn();
+const mockIsCredentialsSaved = vi.fn();
+
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => mockIsNativePlatform() },
+}));
+
+vi.mock("@capgo/capacitor-native-biometric", () => ({
+  NativeBiometric: {
+    isAvailable: (...args: unknown[]) => mockIsAvailable(...args),
+    setCredentials: (...args: unknown[]) => mockSetCredentials(...args),
+    getSecureCredentials: (...args: unknown[]) => mockGetSecureCredentials(...args),
+    getCredentials: (...args: unknown[]) => mockGetCredentials(...args),
+    verifyIdentity: (...args: unknown[]) => mockVerifyIdentity(...args),
+    deleteCredentials: (...args: unknown[]) => mockDeleteCredentials(...args),
+    isCredentialsSaved: (...args: unknown[]) => mockIsCredentialsSaved(...args),
+  },
+  AccessControl: { NONE: 0, BIOMETRY_CURRENT_SET: 1, BIOMETRY_ANY: 2 },
+}));
+
+vi.mock("@/i18n/useTranslation", () => ({
+  translate: (key: string) => key,
+}));
+
+const { isBiometricAvailable, storeBiometricCredential, retrieveBiometricPin, deleteBiometricCredential } =
+  await import("./biometricService");
+
+describe("biometricService", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("isBiometricAvailable", () => {
+    it("returns false when not running on a native platform", async () => {
+      mockIsNativePlatform.mockReturnValue(false);
+      expect(await isBiometricAvailable()).toBe(false);
+      expect(mockIsAvailable).not.toHaveBeenCalled();
+    });
+
+    it("returns true when strong biometry is available", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockIsAvailable.mockResolvedValue({ isAvailable: true, strongBiometryIsAvailable: true });
+      expect(await isBiometricAvailable()).toBe(true);
+      expect(mockIsAvailable).toHaveBeenCalledWith();
+    });
+
+    it("returns false when the native check reports unavailable", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockIsAvailable.mockResolvedValue({ isAvailable: false, strongBiometryIsAvailable: false });
+      expect(await isBiometricAvailable()).toBe(false);
+    });
+
+    it("returns false when only weak biometry is enrolled, even though isAvailable is true", async () => {
+      // Regression test: weak-only biometry (e.g. some face unlock) makes
+      // isAvailable true but crashes our crypto-bound BiometricPrompt flow
+      // with a native IllegalArgumentException — confirmed on-device.
+      mockIsNativePlatform.mockReturnValue(true);
+      mockIsAvailable.mockResolvedValue({ isAvailable: true, strongBiometryIsAvailable: false });
+      expect(await isBiometricAvailable()).toBe(false);
+    });
+
+    it("returns false when the native check throws", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockIsAvailable.mockRejectedValue(new Error("boom"));
+      expect(await isBiometricAvailable()).toBe(false);
+    });
+  });
+
+  describe("storeBiometricCredential", () => {
+    it("does nothing when not running on a native platform", async () => {
+      mockIsNativePlatform.mockReturnValue(false);
+      await storeBiometricCredential("1234");
+      expect(mockSetCredentials).not.toHaveBeenCalled();
+    });
+
+    it("stores the PIN under BIOMETRY_ANY access control", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      await storeBiometricCredential("1234");
+      expect(mockSetCredentials).toHaveBeenCalledWith(
+        expect.objectContaining({
+          password: "1234",
+          server: "com.nexus.app",
+          accessControl: 2,
+          authValidityDuration: 5,
+        })
+      );
+    });
+
+    it("falls back to encrypted compatibility storage after an OEM Keystore failure", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockSetCredentials
+        .mockRejectedValueOnce(new Error("Keystore operation failed after authentication: User not authenticated"))
+        .mockResolvedValueOnce(undefined);
+      mockVerifyIdentity.mockResolvedValue(undefined);
+
+      await storeBiometricCredential("1234");
+
+      expect(mockVerifyIdentity).toHaveBeenCalledWith(expect.objectContaining({ reason: "lock.biometricPromptReason" }));
+      expect(mockSetCredentials).toHaveBeenLastCalledWith({
+        username: "nexus-app-lock-pin",
+        password: "1234",
+        server: "com.nexus.app",
+        accessControl: 0,
+      });
+    });
+  });
+
+  describe("hasBiometricCredential", () => {
+    it("returns false when not running on a native platform", async () => {
+      mockIsNativePlatform.mockReturnValue(false);
+      const { hasBiometricCredential } = await import("./biometricService");
+      expect(await hasBiometricCredential()).toBe(false);
+      expect(mockIsCredentialsSaved).not.toHaveBeenCalled();
+    });
+
+    it("restores a saved credential even while the sensor is temporarily unavailable", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockIsCredentialsSaved.mockResolvedValue({ isSaved: true });
+      const { hasBiometricCredential } = await import("./biometricService");
+      expect(await hasBiometricCredential()).toBe(true);
+      expect(mockIsCredentialsSaved).toHaveBeenCalledWith({ server: "com.nexus.app" });
+    });
+
+    it("returns false when no native credential is saved", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockIsCredentialsSaved.mockResolvedValue({ isSaved: false });
+      const { hasBiometricCredential } = await import("./biometricService");
+      expect(await hasBiometricCredential()).toBe(false);
+    });
+  });
+
+  describe("retrieveBiometricPin", () => {
+    it("returns null when not running on a native platform", async () => {
+      mockIsNativePlatform.mockReturnValue(false);
+      expect(await retrieveBiometricPin()).toBeNull();
+      expect(mockGetSecureCredentials).not.toHaveBeenCalled();
+    });
+
+    it("returns the decrypted PIN on success", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockGetSecureCredentials.mockResolvedValue({ username: "nexus-app-lock-pin", password: "1234" });
+      expect(await retrieveBiometricPin()).toBe("1234");
+      expect(mockGetSecureCredentials).toHaveBeenCalledWith(expect.objectContaining({ server: "com.nexus.app" }));
+    });
+
+    it("returns null when the prompt is cancelled or fails", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockGetSecureCredentials.mockRejectedValue(new Error("cancelled"));
+      expect(await retrieveBiometricPin()).toBeNull();
+    });
+
+    it("uses a fresh biometric verification before reading the encrypted OEM fallback", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockGetSecureCredentials.mockRejectedValue(new Error("No protected credentials found"));
+      mockVerifyIdentity.mockResolvedValue(undefined);
+      mockGetCredentials.mockResolvedValue({ username: "nexus-app-lock-pin", password: "1234" });
+
+      expect(await retrieveBiometricPin()).toBe("1234");
+      expect(mockVerifyIdentity).toHaveBeenCalledWith(expect.objectContaining({ reason: "lock.biometricPromptReason" }));
+      expect(mockGetCredentials).toHaveBeenCalledWith({ server: "com.nexus.app" });
+    });
+  });
+
+  describe("deleteBiometricCredential", () => {
+    it("does nothing when not running on a native platform", async () => {
+      mockIsNativePlatform.mockReturnValue(false);
+      await deleteBiometricCredential();
+      expect(mockDeleteCredentials).not.toHaveBeenCalled();
+    });
+
+    it("deletes the stored credential when native", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockDeleteCredentials.mockResolvedValue(undefined);
+      await deleteBiometricCredential();
+      expect(mockDeleteCredentials).toHaveBeenCalledWith({ server: "com.nexus.app" });
+    });
+
+    it("swallows errors when there is nothing to delete", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      mockDeleteCredentials.mockRejectedValue(new Error("not found"));
+      await expect(deleteBiometricCredential()).resolves.toBeUndefined();
+    });
+  });
+});

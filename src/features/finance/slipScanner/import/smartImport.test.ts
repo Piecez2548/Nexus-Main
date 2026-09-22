@@ -1,0 +1,292 @@
+import { describe, expect, it } from "vitest";
+
+import type { SlipCandidate } from "@/features/finance/slipScanner/models/slipCandidate";
+import type { Transaction } from "@/features/finance/types";
+
+import { rollbackImport, runSmartImport, type SmartImportDeps } from "./smartImport";
+
+const candidate = (over: Partial<SlipCandidate>): SlipCandidate => ({
+  id: "x",
+  assetId: "x",
+  source: "qr",
+  isDuplicate: false,
+  confidence: 80,
+  amount: 100,
+  ...over,
+});
+
+function fakeDeps() {
+  const created: Array<{ id: number; transaction: Transaction }> = [];
+  const deleted: number[] = [];
+  let nextId = 1;
+  const deps: SmartImportDeps = {
+    createTransaction: async (transaction) => {
+      const id = nextId++;
+      created.push({ id, transaction });
+      return id;
+    },
+    deleteTransaction: async (id) => {
+      deleted.push(id);
+    },
+  };
+  return { deps, created, deleted };
+}
+
+describe("runSmartImport", () => {
+  it("imports a batch and reports progress per item", async () => {
+    const { deps, created } = fakeDeps();
+    const progress: number[] = [];
+    const result = await runSmartImport(
+      [candidate({ id: "1" }), candidate({ id: "2" }), candidate({ id: "3" })],
+      deps,
+      { onProgress: (p) => progress.push(p.done) },
+    );
+
+    expect(result.status).toBe("completed");
+    expect(result.importedIds).toEqual([1, 2, 3]);
+    expect(result.importedCandidateIds).toEqual(["1", "2", "3"]);
+    expect(result.failed).toEqual([]);
+    expect(created).toHaveLength(3);
+    expect(progress).toEqual([1, 2, 3]);
+  });
+
+  it("recovers from a bad amount and a persistence error, importing the rest", async () => {
+    const { deps } = fakeDeps();
+    const throwing: SmartImportDeps = {
+      ...deps,
+      createTransaction: async (t) => {
+        if (t.title === "BOOM") throw new Error("db down");
+        return 42;
+      },
+    };
+    const result = await runSmartImport(
+      [
+        candidate({ id: "1", amount: undefined }),
+        candidate({ id: "2", merchant: "BOOM" }),
+        candidate({ id: "3", merchant: "OK" }),
+      ],
+      throwing,
+    );
+
+    expect(result.importedCandidateIds).toEqual(["3"]);
+    expect(result.failed).toEqual([
+      { candidateId: "1", error: "missing-amount" },
+      { candidateId: "2", error: "db down" },
+    ]);
+  });
+
+  it("stops when cancelled and reports what imported so far", async () => {
+    const { deps } = fakeDeps();
+    let calls = 0;
+    const result = await runSmartImport([candidate({ id: "1" }), candidate({ id: "2" })], deps, {
+      isCancelled: () => calls++ >= 1, // allow the first, cancel before the second
+    });
+    expect(result.status).toBe("cancelled");
+    expect(result.importedCandidateIds).toEqual(["1"]);
+  });
+
+  it("skips already-imported candidates on resume", async () => {
+    const { deps, created } = fakeDeps();
+    const result = await runSmartImport([candidate({ id: "1" }), candidate({ id: "2" })], deps, {
+      skipCandidateIds: new Set(["1"]),
+    });
+    expect(result.importedCandidateIds).toEqual(["2"]);
+    expect(created).toHaveLength(1);
+  });
+});
+
+describe("runSmartImport — conflict resolution against existing transactions", () => {
+  it("skips a candidate that is a near-certain duplicate of an existing transaction (matching reference + amount + merchant + time)", async () => {
+    const { deps, created } = fakeDeps();
+    const withExisting: SmartImportDeps = {
+      ...deps,
+      listTransactions: async () => [
+        {
+          title: "Coffee Shop",
+          amount: 250,
+          type: "expense",
+          account: "Cash",
+          date: "2026-08-08",
+          time: "09:15",
+          note: "KBank · REF999", // candidateToTransaction always writes [bank, reference] this way
+          status: "completed",
+        },
+      ],
+    };
+
+    const result = await runSmartImport(
+      [candidate({ id: "1", amount: 250, merchant: "Coffee Shop", date: "2026-08-08", time: "09:15", reference: "REF999" })],
+      withExisting,
+    );
+
+    expect(result.importedCandidateIds).toEqual([]);
+    expect(result.skippedDuplicates).toEqual([{ candidateId: "1", error: "duplicate-of-existing" }]);
+    expect(result.failed).toEqual([]);
+    expect(created).toHaveLength(0);
+  });
+
+  it("keeps both when the match against an existing transaction is only a weak signal", async () => {
+    const { deps, created } = fakeDeps();
+    const withExisting: SmartImportDeps = {
+      ...deps,
+      listTransactions: async () => [
+        { title: "Coffee Shop", amount: 250, type: "expense", account: "Cash", date: "2026-01-01", status: "completed" },
+      ],
+    };
+
+    // Same amount and merchant, but a different date -- not enough to cross
+    // the conflict resolver's auto-skip bar.
+    const result = await runSmartImport(
+      [candidate({ id: "1", amount: 250, merchant: "Coffee Shop", date: "2026-08-08" })],
+      withExisting,
+    );
+
+    expect(result.importedCandidateIds).toEqual(["1"]);
+    expect(result.skippedDuplicates).toEqual([]);
+    expect(created).toHaveLength(1);
+  });
+
+  it("skips a repeat QR payload even when OCR date or time changed", async () => {
+    const { deps, created } = fakeDeps();
+    const payload = "000201010212...CRC";
+    const withExisting: SmartImportDeps = {
+      ...deps,
+      listTransactions: async () => [
+        {
+          title: "PromptPay",
+          amount: 40,
+          type: "expense",
+          account: "Cash",
+          date: "2026-09-13",
+          time: "12:30",
+          sourcePayload: payload,
+          status: "completed",
+        },
+      ],
+    };
+
+    const result = await runSmartImport(
+      [candidate({ id: "repeat", amount: 40, merchant: "PromptPay", date: "2026-09-14", time: "12:31", payload })],
+      withExisting,
+    );
+
+    expect(result.importedCandidateIds).toEqual([]);
+    expect(result.skippedDuplicates).toEqual([{ candidateId: "repeat", error: "duplicate-of-existing" }]);
+    expect(created).toHaveLength(0);
+  });
+
+  it("KNOWN LIMIT: a same-payment duplicate with only 3 weak signals available (e.g. a notification-confirmed transaction later re-captured by a gallery scan) is kept, not silently auto-skipped -- by design, not by accident", async () => {
+    // Payment Notification Capture confirms a transaction from bank push-
+    // notification text, which sets neither a time (buildNotificationCandidate.ts
+    // leaves it unset -- no reliably-parseable one in the notification body)
+    // nor a reference (rarely parseable either). The existing transaction
+    // below reflects that real shape exactly, not a contrived one: date-only,
+    // no note. If the SAME real payment is later also captured by a gallery
+    // scan of the physical slip (same amount, merchant, and now -- since
+    // smartDuplicate.ts's timestampsMatch() falls back to same-calendar-day
+    // when either side lacks a time -- a correctly-matching timestamp too),
+    // the noisy-OR combination of amount(0.3) + merchant(0.3) + timestamp(0.4)
+    // reaches 1-(0.7*0.7*0.6) = 0.706. That's well above isLikelyDuplicate's
+    // bare 0.7 default, but conflictResolver.ts's actual auto-skip policy
+    // (defaultResolution) deliberately requires >=0.85 -- "near-certain," not
+    // just "likely" -- before silently discarding an incoming transaction,
+    // specifically because auto-skip has no undo path once the candidate is
+    // dropped. Three weak signals (0.3/0.3/0.4) can mathematically never
+    // reach 0.85 on their own, with or without a reference. This is the
+    // conservative design working as intended, not the gap it looks like at
+    // first glance: the case is still surfaced (kept, not skipped) rather
+    // than silently duplicated *or* silently discarded, leaving the user free
+    // to notice and merge/delete manually. Closing it further would mean
+    // lowering the auto-skip threshold or reweighting signals globally --
+    // changes that would also loosen duplicate detection for every other
+    // caller of this engine (QR/OCR gallery scans included), a materially
+    // bigger and riskier change than this fix's scope.
+    const { deps, created } = fakeDeps();
+    const withExisting: SmartImportDeps = {
+      ...deps,
+      listTransactions: async () => [
+        {
+          title: "Coffee Shop",
+          amount: 250,
+          type: "expense",
+          account: "Cash",
+          date: "2026-08-08",
+          time: undefined, // realistic for a notification-confirmed import -- never set
+          note: undefined, // no reference -- also realistic for a notification-confirmed import
+          status: "completed",
+        },
+      ],
+    };
+
+    const result = await runSmartImport(
+      [candidate({ id: "1", amount: 250, merchant: "Coffee Shop", date: "2026-08-08", time: "09:15" })],
+      withExisting,
+    );
+
+    expect(result.importedCandidateIds).toEqual(["1"]); // kept, not skipped -- surfaced for the user to review
+    expect(result.skippedDuplicates).toEqual([]);
+    expect(created).toHaveLength(1);
+  });
+
+  it("does not check for conflicts at all when listTransactions is not provided (unchanged prior behavior)", async () => {
+    const { deps, created } = fakeDeps();
+    const result = await runSmartImport([candidate({ id: "1", amount: 250 })], deps);
+
+    expect(result.importedCandidateIds).toEqual(["1"]);
+    expect(result.skippedDuplicates).toEqual([]);
+    expect(created).toHaveLength(1);
+  });
+
+  // Regression: two candidates in the same batch describing the same
+  // real-world slip (e.g. a photo and a screenshot of it) used to both get
+  // imported, because existingSignals was only ever fetched once up front
+  // and never updated as the batch itself created transactions.
+  it("skips a same-batch candidate that is a near-certain duplicate of one already imported earlier in this batch", async () => {
+    const { deps, created } = fakeDeps();
+    const withListTransactions: SmartImportDeps = { ...deps, listTransactions: async () => [] };
+
+    const twin = {
+      amount: 250,
+      merchant: "Coffee Shop",
+      bankName: "KBank",
+      reference: "REF999",
+      date: "2026-08-08",
+      time: "09:15",
+    };
+    const result = await runSmartImport(
+      [candidate({ id: "1", ...twin }), candidate({ id: "2", ...twin })],
+      withListTransactions,
+    );
+
+    expect(result.importedCandidateIds).toEqual(["1"]);
+    expect(result.skippedDuplicates).toEqual([{ candidateId: "2", error: "duplicate-of-existing" }]);
+    expect(result.failed).toEqual([]);
+    expect(created).toHaveLength(1);
+  });
+
+  it("still imports both same-batch twins when listTransactions is not provided (unchanged prior behavior)", async () => {
+    const { deps, created } = fakeDeps();
+    const twin = {
+      amount: 250,
+      merchant: "Coffee Shop",
+      bankName: "KBank",
+      reference: "REF999",
+      date: "2026-08-08",
+      time: "09:15",
+    };
+    const result = await runSmartImport([candidate({ id: "1", ...twin }), candidate({ id: "2", ...twin })], deps);
+
+    expect(result.importedCandidateIds).toEqual(["1", "2"]);
+    expect(result.skippedDuplicates).toEqual([]);
+    expect(created).toHaveLength(2);
+  });
+});
+
+describe("rollbackImport", () => {
+  it("deletes each imported id and returns the count removed", async () => {
+    const { deps, deleted } = fakeDeps();
+    const removed = await rollbackImport([1, 2, 3], deps);
+    expect(removed).toBe(3);
+    expect(deleted).toEqual([1, 2, 3]);
+  });
+});

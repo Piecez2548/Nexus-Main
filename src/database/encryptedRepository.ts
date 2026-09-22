@@ -1,0 +1,234 @@
+import type { Table } from "dexie";
+
+import { encryptField, decryptField, type EncryptedEnvelope } from "@/features/encryption/crypto/encryption";
+import { useEncryptionSessionStore } from "@/features/encryption/store/encryptionSessionStore";
+import { useAppLockStore } from "@/store/appLockStore";
+import type { SyncMeta } from "@/utils/syncMeta";
+import { writeLocalSyncRows } from "@/database/localSyncWrite";
+
+// Thrown when encryption is enabled but no session DEK is resident (the
+// app is locked, or somehow got into this state without unlocking first).
+// Distinguishing this from a generic error lets a caller show something
+// more useful than a stack trace.
+export class EncryptionLockedError extends Error {
+  constructor() {
+    super("Encryption is enabled but the data can't be read or written until the app is unlocked");
+    this.name = "EncryptionLockedError";
+  }
+}
+
+export interface EncryptedRow {
+  id?: number;
+  syncId?: string;
+  updatedAt?: string;
+  encryptedContent?: EncryptedEnvelope;
+  [key: string]: unknown;
+}
+
+interface EncryptedRepositoryOptions<T> {
+  // Opt in for local synced repositories; bare encryption adapters preserve
+  // caller metadata for import/compatibility use cases.
+  stampLocalWrites?: boolean;
+  // Fields kept as plaintext top-level columns instead of folded into
+  // encryptedContent — for fields a Dexie `&`-unique index or `.where()`
+  // lookup still needs to query directly (e.g. recipientKey, budgets'
+  // category). Lower sensitivity than the rest of the row's content, and
+  // this is the pragmatic trade-off documented in the encryption plan.
+  plaintextKeys?: (keyof T)[];
+}
+
+function isEncryptionEnabled(): boolean {
+  return useAppLockStore.getState().encryptionEnabled;
+}
+
+function requireSessionDek(): CryptoKey {
+  const dek = useEncryptionSessionStore.getState().dek;
+  if (dek === null) throw new EncryptionLockedError();
+  return dek;
+}
+
+// `encryptionEnabled` is a local, per-device flag — it only reflects
+// whether *this* device has ever run the enable/recovery flow. It is NOT
+// enough to decide whether a table needs decrypting: a table can contain
+// rows encrypted by a *different* device (synced down as an opaque blob,
+// same as any other row — see syncEngine.ts) before this device has ever
+// enabled encryption itself. Trusting the local flag alone would silently
+// hand back ciphertext-shaped rows (no plaintext fields at all) as if they
+// were normal data. Checking the rows' own shape as well is what lets
+// requireSessionDek's EncryptionLockedError surface correctly instead.
+function anyRowEncrypted(rows: unknown[]): boolean {
+  return rows.some((row) => (row as EncryptedRow).encryptedContent !== undefined);
+}
+
+// Exported so the "Enable Encryption" migration can produce the exact same
+// row shape a normal repository write would, instead of duplicating this
+// logic — the migration writes rows directly (it has to touch every
+// existing row, not just ones passing through add/update).
+export async function encryptRow<T extends SyncMeta & { id?: number }>(
+  dek: CryptoKey,
+  row: T,
+  plaintextKeys: (keyof T)[]
+): Promise<EncryptedRow> {
+  const { id, syncId, updatedAt, ...rest } = row as T & Record<string, unknown>;
+
+  const plaintextPart: Record<string, unknown> = {};
+  const contentPart: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(rest)) {
+    if (plaintextKeys.includes(key as keyof T)) plaintextPart[key] = value;
+    else contentPart[key] = value;
+  }
+
+  const encryptedContent = await encryptField(dek, contentPart);
+  return { id, syncId, updatedAt, ...plaintextPart, encryptedContent };
+}
+
+// Rows without `encryptedContent` are either legacy plaintext (never
+// migrated) or belong to an install that hasn't opted into encryption at
+// all — returned as-is. This tolerance is what makes a mid-migration table
+// (some rows encrypted, some not yet) safe to read from at any point.
+//
+// Exported for the same reason encryptRow is: so the "Disable Encryption"
+// migration can turn a row back into the exact plain shape a normal
+// repository read would produce, instead of a second copy of this logic.
+export async function decryptRow<T>(dek: CryptoKey, row: EncryptedRow): Promise<T> {
+  if (row.encryptedContent === undefined) {
+    return row as unknown as T;
+  }
+
+  const { encryptedContent, ...plaintextAndPlumbing } = row;
+  const content = await decryptField<Record<string, unknown>>(dek, encryptedContent);
+  return { ...plaintextAndPlumbing, ...content } as T;
+}
+
+type DecryptedContent = Record<string, unknown>;
+
+function envelopeCacheKey(envelope: EncryptedEnvelope): string {
+  return `${envelope.v}:${envelope.iv}:${envelope.ct}`;
+}
+
+async function decryptRowWithCache<T>(
+  dek: CryptoKey,
+  row: EncryptedRow,
+  cache: Map<string, DecryptedContent>
+): Promise<T> {
+  if (row.encryptedContent === undefined) {
+    return row as unknown as T;
+  }
+
+  const { encryptedContent, ...plaintextAndPlumbing } = row;
+  const cacheKey = envelopeCacheKey(encryptedContent);
+  let content = cache.get(cacheKey);
+
+  if (content === undefined) {
+    content = await decryptField<DecryptedContent>(dek, encryptedContent);
+    cache.set(cacheKey, content);
+  }
+
+  // Repository reads have always returned fresh objects. Clone cached JSON
+  // content so a consumer cannot mutate the next read through a shared
+  // reference while still avoiding the expensive WebCrypto operation.
+  return { ...plaintextAndPlumbing, ...structuredClone(content) } as T;
+}
+
+/**
+ * Wraps a Dexie table with transparent encryption for its non-plumbing
+ * fields, matching the existing repositories' `{getAll, add, update}`
+ * shape so call sites don't need to change. `remove` is deliberately not
+ * included here — every repository's remove only ever needs `syncId`
+ * (for the tombstone), which stays plaintext, so it never needs to go
+ * through encryption at all.
+ *
+ * When encryption has never been enabled on this install, every method is
+ * a byte-identical passthrough to calling the Dexie table directly.
+ */
+export function createEncryptedRepository<T extends SyncMeta & { id?: number }>(
+  table: Table<T, number>,
+  options: EncryptedRepositoryOptions<T> = {}
+) {
+  const plaintextKeys = options.plaintextKeys ?? [];
+  // The DEK object scopes cached plaintext to the active unlocked session.
+  // A recovered/replaced key gets a different WeakMap entry and must prove it
+  // can decrypt every envelope itself. WeakMap also lets a cleared DEK and its
+  // plaintext cache be reclaimed once no session code retains that key.
+  const decryptedContentByDek = new WeakMap<CryptoKey, Map<string, DecryptedContent>>();
+
+  function cacheFor(dek: CryptoKey): Map<string, DecryptedContent> {
+    const existing = decryptedContentByDek.get(dek);
+    if (existing !== undefined) return existing;
+
+    const created = new Map<string, DecryptedContent>();
+    decryptedContentByDek.set(dek, created);
+    return created;
+  }
+
+  async function persist(entity: T, mode: "add" | "put"): Promise<number> {
+    if (options.stampLocalWrites) {
+      return (await writeLocalSyncRows(table, [entity], mode))[0];
+    }
+    return mode === "add" ? table.add(entity) : table.put(entity);
+  }
+
+  async function getAll(): Promise<T[]> {
+    const rows = await table.toArray();
+    if (!isEncryptionEnabled() && !anyRowEncrypted(rows)) return rows;
+
+    const dek = requireSessionDek();
+    const cache = cacheFor(dek);
+    const activeKeys = new Set(
+      rows.flatMap((row) => {
+        const envelope = (row as unknown as EncryptedRow).encryptedContent;
+        return envelope === undefined ? [] : [envelopeCacheKey(envelope)];
+      })
+    );
+
+    for (const key of cache.keys()) {
+      if (!activeKeys.has(key)) cache.delete(key);
+    }
+
+    return Promise.all(
+      rows.map((row) => decryptRowWithCache<T>(dek, row as unknown as EncryptedRow, cache))
+    );
+  }
+
+  async function add(entity: T): Promise<number> {
+    if (!isEncryptionEnabled()) return persist(entity, "add");
+
+    const dek = requireSessionDek();
+    const encrypted = await encryptRow(dek, entity, plaintextKeys);
+    return persist(encrypted as unknown as T, "add");
+  }
+
+  async function update(id: number, entity: T): Promise<number> {
+    const withId = { ...entity, id };
+
+    if (!isEncryptionEnabled()) {
+      // Same tolerance as getAll()/decryptOptional(): the local flag alone
+      // doesn't mean this specific row is plaintext -- it could already be
+      // an encrypted row synced down from another device. Writing a plain
+      // put() over one would silently strip its encryptedContent and
+      // downgrade it to plaintext.
+      const existing = await table.get(id);
+      if (existing === undefined || !anyRowEncrypted([existing])) {
+        return persist(withId, "put");
+      }
+    }
+
+    const dek = requireSessionDek();
+    const encrypted = await encryptRow(dek, withId, plaintextKeys);
+    return persist(encrypted as unknown as T, "put");
+  }
+
+  // For the rare repository method that queries the Dexie table directly
+  // (e.g. a `.where()` lookup on a plaintext-exempt field) instead of going
+  // through getAll — decrypts a single row the same way getAll would.
+  async function decryptOptional(row: T | undefined): Promise<T | undefined> {
+    if (row === undefined) return undefined;
+    if (!isEncryptionEnabled() && !anyRowEncrypted([row])) return row;
+
+    const dek = requireSessionDek();
+    return decryptRowWithCache<T>(dek, row as unknown as EncryptedRow, cacheFor(dek));
+  }
+
+  return { getAll, add, update, decryptOptional };
+}

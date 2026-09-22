@@ -1,0 +1,7 @@
+{
+  "project": "Nexus Main",
+  "source": "Nexus repository snapshot (Main route entry)",
+  "status": "extracted-standalone-snapshot",
+  "deployment": { "url": "https://nexus-lemon-eight-32.vercel.app/dashboard", "github": "https://github.com/Piecez2548/Nexus" },
+  "next": "Create a dedicated repository after the snapshot is independently validated; do not remove the source monorepo yet."
+}

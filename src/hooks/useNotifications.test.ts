@@ -1,0 +1,71 @@
+import { toLocalDateString } from "@/utils/localDate";
+import { describe, expect, it, beforeEach } from "vitest";
+import { renderHook } from "@testing-library/react";
+
+import { useNotifications } from "./useNotifications";
+import { useTransactionStore } from "@/features/finance/store/transactionStore";
+import { useBudgetStore } from "@/features/finance/store/budgetStore";
+import { useNotificationStore } from "@/store/notificationStore";
+import type { Transaction, Budget } from "@/features/finance/types";
+
+const today = toLocalDateString(new Date());
+
+describe("useNotifications", () => {
+  beforeEach(() => {
+    useTransactionStore.setState({ transactions: [] });
+    useBudgetStore.setState({ budgets: [] });
+    useNotificationStore.setState({ dismissedIds: [] });
+  });
+
+  it("returns no notifications when nothing is over budget or unusual", () => {
+    const { result } = renderHook(() => useNotifications());
+    expect(result.current).toEqual([]);
+  });
+
+  it("includes a warning when a budget is over its limit", () => {
+    const budget: Budget = { id: 1, category: "Food", amount: 1000, period: "monthly" };
+    useBudgetStore.setState({ budgets: [budget] });
+
+    const transactions: Transaction[] = [
+      { title: "Big lunch", amount: 1200, type: "expense", category: "Food", account: "Cash", date: today, status: "completed" },
+    ];
+    useTransactionStore.setState({ transactions });
+
+    const { result } = renderHook(() => useNotifications());
+    expect(result.current).toHaveLength(1);
+    expect(result.current[0].id).toBe("budget-1");
+    expect(result.current[0].severity).toBe("warning");
+    expect(result.current[0].key).toBe("topbar.notificationMessages.budgetOver");
+    expect(result.current[0].params).toEqual({ category: "Food", spent: "1,200", budgetAmount: "1,000" });
+  });
+
+  it("includes a warning when a budget is near its limit but not over", () => {
+    const budget: Budget = { id: 2, category: "Transport", amount: 1000, period: "monthly" };
+    useBudgetStore.setState({ budgets: [budget] });
+
+    const transactions: Transaction[] = [
+      { title: "Taxi", amount: 850, type: "expense", category: "Transport", account: "Cash", date: today, status: "completed" },
+    ];
+    useTransactionStore.setState({ transactions });
+
+    const { result } = renderHook(() => useNotifications());
+    expect(result.current).toHaveLength(1);
+    expect(result.current[0].key).toBe("topbar.notificationMessages.budgetNearLimit");
+    expect(result.current[0].params).toEqual({ category: "Transport", percent: 85 });
+  });
+
+  it("hides a notification once its id has been dismissed", () => {
+    const budget: Budget = { id: 1, category: "Food", amount: 1000, period: "monthly" };
+    useBudgetStore.setState({ budgets: [budget] });
+
+    const transactions: Transaction[] = [
+      { title: "Big lunch", amount: 1200, type: "expense", category: "Food", account: "Cash", date: today, status: "completed" },
+    ];
+    useTransactionStore.setState({ transactions });
+
+    useNotificationStore.setState({ dismissedIds: ["budget-1"] });
+
+    const { result } = renderHook(() => useNotifications());
+    expect(result.current).toEqual([]);
+  });
+});
