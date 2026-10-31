@@ -17,6 +17,10 @@ export interface BackupReminderInput {
   lastBackupAt: string | null;
   snoozedUntil: string | null;
   transactionCount: number;
+  // When this device last completed a cloud sync while signed in, or null.
+  // A recent sync means the data already has an off-device copy, so a manual
+  // export isn't urgent.
+  lastSyncedAt?: string | null;
   now: Date;
 }
 
@@ -24,12 +28,16 @@ export function getBackupReminder({
   lastBackupAt,
   snoozedUntil,
   transactionCount,
+  lastSyncedAt = null,
   now,
 }: BackupReminderInput): BackupReminder | null {
   if (transactionCount < BACKUP_MIN_TRANSACTIONS) return null;
 
   const snoozeEnd = snoozedUntil ? Date.parse(snoozedUntil) : NaN;
   if (Number.isFinite(snoozeEnd) && now.getTime() < snoozeEnd) return null;
+
+  const synced = lastSyncedAt ? Date.parse(lastSyncedAt) : NaN;
+  if (Number.isFinite(synced) && now.getTime() - synced < BACKUP_STALE_DAYS * DAY_MS) return null;
 
   const last = lastBackupAt ? Date.parse(lastBackupAt) : NaN;
   if (!Number.isFinite(last)) return { kind: "never" };

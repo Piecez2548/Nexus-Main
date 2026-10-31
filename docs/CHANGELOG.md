@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-31 — Upcoming bills warning and reminder refinements
+
+- Dashboard shows a warning when active subscriptions due in the next 14 days (net of expected recurring income) would push the overall balance below zero. It is a deterministic projection (`src/features/finance/utils/upcomingCashFlow.ts`); there is no per-account balance in the app, so it uses the same overall balance as the Balance card. Past-due occurrences are not counted (the due-check logs them as real transactions).
+- The pre-billing notification for recurring income now says income is expected instead of a bill being due.
+- The backup reminder stays quiet while a signed-in device has synced within the last 14 days (`lastSyncedAt`, in-session only), since an off-device copy already exists.
+
 ## 2026-10-31 — Recurring income and import preview
 
 - Subscription Manager now supports recurring income (e.g. salary) via an optional `kind` field (`expense` default, `income`). The existing foreground due-check logs an `income` transaction on the due date; recurring income is excluded from the monthly/yearly spend totals. Existing subscriptions are unaffected (no `kind` means expense). The pre-billing reminder wording is unchanged and still reads as a bill reminder.
