@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-31 — Backup reminder
+
+- Because data is local-first, the Dashboard now shows a dismissible reminder when a user with at least 5 transactions has never exported a backup, or the last export is 14+ days old. Dismissing snoozes it for 7 days.
+- Settings > Data shows the date of the last backup export. The date is a device-only record (localStorage), not synced, and is only stamped by the manual "Export Backup" action.
+- Decision logic is a pure, tested function (`src/database/backupReminder.ts`).
+
 ## 2026-09-15 — OCR slip review queue
 
 - Gallery scans now open the existing Import Preview for OCR or otherwise unverified slips instead of dropping them after the verified QR auto-import. A person can review, edit, import, or return to the pending queue while the strict automatic-import gate remains unchanged.

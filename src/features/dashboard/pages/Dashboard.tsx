@@ -13,6 +13,7 @@ import TodoPreviewPanel from "@/features/dashboard/components/TodoPreviewPanel";
 import HabitPreviewPanel from "@/features/dashboard/components/HabitPreviewPanel";
 import SchedulePreviewPanel from "@/features/dashboard/components/SchedulePreviewPanel";
 import AiDailySummaryPanel from "@/features/dashboard/components/AiDailySummaryPanel";
+import BackupReminderCard from "@/features/dashboard/components/BackupReminderCard";
 import WeeklyDigestCard from "@/features/automation/components/WeeklyDigestCard";
 import InsightsPanel from "@/features/finance/components/InsightsPanel";
 import LoadingState from "@/components/ui/LoadingState";
@@ -66,6 +67,8 @@ export default function Dashboard() {
       <DashboardHeader onAddTransaction={() => openTransactionDrawer()} />
 
       <DashboardPeriodSelector />
+
+      <BackupReminderCard transactionCount={transactions.length} />
 
       <WeeklyDigestCard />
 

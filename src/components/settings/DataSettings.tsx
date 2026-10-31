@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 
+import { useBackupStatusStore } from "@/database/backupStatusStore";
 import { exportBackup, importBackup, MAX_BACKUP_BYTES } from "@/database/backupService";
 import { dedupeAccountsAndCategories } from "@/features/finance/utils/dedupeAccountsAndCategories";
 import {
@@ -63,6 +64,8 @@ export default function DataSettings() {
   const { loadCategories } = useCategoryStore();
   const { transactions, loadTransactions } = useTransactionStore();
   const { t } = useTranslation();
+  const lastBackupAt = useBackupStatusStore((s) => s.lastBackupAt);
+  const markBackedUp = useBackupStatusStore((s) => s.markBackedUp);
 
   useEffect(() => {
     loadTransactions();
@@ -104,6 +107,7 @@ export default function DataSettings() {
         URL.revokeObjectURL(url);
       }
 
+      markBackedUp();
       setStatus(t("settings.exportSuccess"));
       toast.success(t("settings.exportSuccess"));
     } catch (err) {
@@ -228,7 +232,11 @@ export default function DataSettings() {
         <DataTile
           icon={<Download size={20} />}
           label={t("settings.exportBackup")}
-          description={t("settings.exportBackupDescription")}
+          description={
+            lastBackupAt
+              ? t("settings.lastBackup", { date: new Date(lastBackupAt).toLocaleDateString() })
+              : t("settings.neverBackedUp")
+          }
           onClick={handleExport}
           disabled={busy}
         />
