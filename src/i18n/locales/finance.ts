@@ -218,6 +218,9 @@ export const financeTranslations = {
     },
     subscriptions: {
       pageTitle: "Subscriptions",
+      kindLabel: "Type",
+      kindExpense: "Recurring expense",
+      kindIncome: "Recurring income (e.g. salary)",
       addSubscription: "Add Subscription",
       editSubscription: "Edit Subscription",
       loading: "Loading subscriptions...",
@@ -748,6 +751,9 @@ export const financeTranslations = {
     },
     subscriptions: {
       pageTitle: "การสมัครสมาชิก",
+      kindLabel: "ประเภท",
+      kindExpense: "รายจ่ายประจำ",
+      kindIncome: "รายรับประจำ (เช่น เงินเดือน)",
       addSubscription: "เพิ่มการสมัครสมาชิก",
       editSubscription: "แก้ไขการสมัครสมาชิก",
       loading: "กำลังโหลดการสมัครสมาชิก...",

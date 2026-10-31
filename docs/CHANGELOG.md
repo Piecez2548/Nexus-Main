@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-31 — Recurring income and import preview
+
+- Subscription Manager now supports recurring income (e.g. salary) via an optional `kind` field (`expense` default, `income`). The existing foreground due-check logs an `income` transaction on the due date; recurring income is excluded from the monthly/yearly spend totals. Existing subscriptions are unaffected (no `kind` means expense). The pre-billing reminder wording is unchanged and still reads as a bill reminder.
+- Import Backup now validates the file first and shows the backup date and transaction count next to the device's current count before the replace-all confirmation; invalid files are rejected without a confirm prompt.
+- Fixed Backup reminder / last-backup strings using single-brace placeholders; they now use the project's `{{name}}` interpolation.
+
 ## 2026-10-31 — Backup reminder
 
 - Because data is local-first, the Dashboard now shows a dismissible reminder when a user with at least 5 transactions has never exported a backup, or the last export is 14+ days old. Dismissing snoozes it for 7 days.
