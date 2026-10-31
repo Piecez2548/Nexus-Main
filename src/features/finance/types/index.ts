@@ -228,6 +228,8 @@ export interface NetWorthSnapshot extends SyncMeta {
 // subscription and advances nextBillingDate as the direct, intended side
 // effect of that specific write, exactly once per cycle it processes.
 export type SubscriptionStatus = "active" | "paused" | "cancelled";
+// Absent means "expense" -- every subscription created before income support.
+export type SubscriptionKind = "expense" | "income";
 
 export interface Subscription extends SyncMeta {
   id?: number;
@@ -252,6 +254,10 @@ export interface Subscription extends SyncMeta {
   // date can't be un-drifted retroactively).
   billingAnchorDay?: number;
   status: SubscriptionStatus;
+  // A recurring payment going out (default) or a recurring receipt coming in
+  // (e.g. salary). Income reuses this whole lifecycle -- due-check, anchor
+  // day, reminder -- but is excluded from the spending totals.
+  kind?: SubscriptionKind;
   category?: string;
   // Plain account *name* string, matching Transaction.account's existing
   // convention (not a foreign key -- Account has no stable id contract
