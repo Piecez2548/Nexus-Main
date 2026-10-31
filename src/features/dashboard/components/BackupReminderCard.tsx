@@ -3,6 +3,7 @@ import { DatabaseBackup, X } from "lucide-react";
 
 import { getBackupReminder } from "@/database/backupReminder";
 import { useBackupStatusStore } from "@/database/backupStatusStore";
+import { useAuthStore } from "@/features/sync/store/authStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
 // Renders nothing unless getBackupReminder says a nudge is due -- same
@@ -14,8 +15,11 @@ export default function BackupReminderCard({ transactionCount }: { transactionCo
   const lastBackupAt = useBackupStatusStore((s) => s.lastBackupAt);
   const snoozedUntil = useBackupStatusStore((s) => s.snoozedUntil);
   const snooze = useBackupStatusStore((s) => s.snooze);
+  // lastSyncedAt is cleared on sign-out, so it only suppresses the reminder
+  // while an account is actually syncing this device's data.
+  const lastSyncedAt = useAuthStore((s) => s.lastSyncedAt);
 
-  const reminder = getBackupReminder({ lastBackupAt, snoozedUntil, transactionCount, now: new Date() });
+  const reminder = getBackupReminder({ lastBackupAt, snoozedUntil, transactionCount, lastSyncedAt, now: new Date() });
   if (!reminder) return null;
 
   const isNever = reminder.kind === "never";

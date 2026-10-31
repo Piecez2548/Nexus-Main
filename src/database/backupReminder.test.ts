@@ -34,4 +34,12 @@ describe("getBackupReminder", () => {
     expect(getBackupReminder({ ...base, snoozedUntil: "2026-11-02T12:00:00.000Z" })).toBeNull();
     expect(getBackupReminder({ ...base, snoozedUntil: "2026-10-30T12:00:00.000Z" })).toEqual({ kind: "never" });
   });
+
+  it("stays quiet while a recent cloud sync already holds an off-device copy", () => {
+    expect(getBackupReminder({ ...base, lastSyncedAt: "2026-10-31T11:00:00.000Z" })).toBeNull();
+  });
+
+  it("reminds again when the last sync is older than the stale window", () => {
+    expect(getBackupReminder({ ...base, lastSyncedAt: "2026-10-01T00:00:00.000Z" })).toEqual({ kind: "never" });
+  });
 });
