@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-01 — Per-account balances
+
+- Accounts have an optional `openingBalance` (missing means 0; for credit card and loan accounts it is the amount owed). The Accounts page shows each account's balance, or "Amount owed" for credit card and loan accounts.
+- Balances come from a pure function (`src/features/finance/utils/accountBalance.ts`): income and refund add, expense subtracts, transfer moves money from `account` to `toAccount`. Adjustment (no direction) and pending transactions are not counted; the page says so. Accounts are matched by name, like transactions.
+- No storage change: the field is optional, so existing data, backups, encryption and sync are unaffected. The Dashboard balance is unchanged and still counts only income and expense, so it can differ from the sum of account balances.
+
 ## 2026-10-31 — Upcoming bills warning and reminder refinements
 
 - Dashboard shows a warning when active subscriptions due in the next 14 days (net of expected recurring income) would push the overall balance below zero. It is a deterministic projection (`src/features/finance/utils/upcomingCashFlow.ts`); there is no per-account balance in the app, so it uses the same overall balance as the Balance card. Past-due occurrences are not counted (the due-check logs them as real transactions).

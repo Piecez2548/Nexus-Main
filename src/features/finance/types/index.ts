@@ -72,6 +72,9 @@ export interface Account extends SyncMeta {
   type: AccountType;
   icon: string;
   color: string;
+  // Balance before the first tracked transaction; for credit_card / loan
+  // accounts this is the amount owed. Missing means 0.
+  openingBalance?: number;
 }
 
 export type CategoryType = "income" | "expense";
