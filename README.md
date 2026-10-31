@@ -8,6 +8,14 @@ Nexus Main is the primary web and Android workspace for personal finance, planni
 | Repository | https://github.com/Piecez2548/Nexus-Main |
 | Source workspace | https://github.com/Piecez2548/Nexus |
 
+## Related repositories
+
+| Repository | Role |
+| --- | --- |
+| [Nexus](https://github.com/Piecez2548/Nexus) | Source workspace and upstream for shared modules |
+| [Nexus-Tools](https://github.com/Piecez2548/Nexus-Tools) | Bilingual PDF, image, OCR and QR toolkit |
+| [ScreenTutor](https://github.com/Piecez2548/ScreenTutor) | Local-first screen learning assistant |
+
 ## Scope
 
 The application provides authenticated finance, portfolio, transaction, planning, vault, and account-management workflows. It is intended for personal use and reviewable software delivery; it is not financial, tax, or investment advice.
