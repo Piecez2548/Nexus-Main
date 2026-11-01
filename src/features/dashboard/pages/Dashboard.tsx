@@ -79,7 +79,7 @@ export default function Dashboard() {
         <LoadingState label={t("dashboard.loadingDashboard")} />
       ) : (
         <>
-          <UpcomingBillsWarning balance={balance} />
+          <UpcomingBillsWarning balance={balance} transactions={transactions} />
 
           <SummaryCardsGrid
             balance={balance}

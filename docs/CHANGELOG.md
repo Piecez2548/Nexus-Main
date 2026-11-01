@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-01 — Per-account bill warning
+
+- The Dashboard upcoming-bills warning now also checks each account: for subscriptions that name an account, the account's balance plus its own expected income minus its own bills due in the next 14 days (`projectAccountShortfalls` in `upcomingCashFlow.ts`). Accounts that go below zero are listed by name.
+- Only asset accounts with an opening balance entered are checked, so an account the user never set up does not warn on every bill; credit card and loan accounts are skipped. The existing overall check is unchanged.
+
 ## 2026-11-01 — Per-account balances
 
 - Accounts have an optional `openingBalance` (missing means 0; for credit card and loan accounts it is the amount owed). The Accounts page shows each account's balance, or "Amount owed" for credit card and loan accounts.
