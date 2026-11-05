@@ -8,7 +8,7 @@
 
 The counts dated August 29 below are historical. Current remediation evidence is in [AUDIT_REMEDIATION_2026-09-01.md](AUDIT_REMEDIATION_2026-09-01.md).
 
-- `npm test`: unit/integration suite, bounded to four workers to avoid worker startup saturation.
+- `npm test`: unit/integration suite, bounded to eight workers (`maxWorkers` in `vite.config.ts`; full run about 10 minutes on the development machine, 465 files / 2,926 tests passing on 2026-11-05).
 - `npx playwright test --workers=2`: local functional E2E build; excludes dedicated auth/login configurations and skips timing benchmarks.
 - `npx playwright test --config=e2e/auth-entry.config.ts`: synthetic authenticated build, account/PIN and multi-tab lock regressions.
 - `npx playwright test --config=e2e/login.config.ts`: login accessibility/validation on the same synthetic-config build, no fixed dev port.

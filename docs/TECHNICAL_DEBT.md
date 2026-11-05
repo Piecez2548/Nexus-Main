@@ -1,6 +1,10 @@
 # Technical Debt
 
-**Last Updated:** 2026-09-12
+**Last Updated:** 2026-11-05
+
+## November 5 dependency audit
+
+This supersedes the September 8 "zero known vulnerabilities" statement. `npm audit` now reports 22 advisories (3 low, 13 moderate, 6 high, 0 critical) after updating `@capacitor/android`/`core`/`cli` 8.6.0, `zod` 4.6.7, `vite` 8.3.5, `concurrently` 10.0.6, `electron` 43.8.7 and `dompurify` 3.4.17. The remainder are mostly transitive dev/desktop tooling (for example under `electron-builder` and `vite-plugin-pwa`; fixes require major-version changes) and `vitest`/`@vitest/coverage-v8` (kept at 4.1.10 because `npm update` and `npm audit fix` crash with `Cannot read properties of null (reading 'edgesOut')` while resolving vitest's peer set). Planned: retry after an npm upgrade and review the major-version fixes separately. Other open items from the 2026-11 review, all Planned: hardcoded English `aria-label` strings should move to i18n; the CSP still allows `'unsafe-inline'`.
 
 ## September 12 sync-conflict findings — three implementation fixes
 
