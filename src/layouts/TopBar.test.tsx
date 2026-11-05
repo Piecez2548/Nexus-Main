@@ -61,7 +61,9 @@ describe("TopBar", () => {
 
     await user.click(screen.getByRole("button", { name: "Scan Gallery" }));
 
-    expect(await screen.findByText("Scan your gallery")).toBeInTheDocument();
+    // The scanner panel is lazy-loaded; allow for slow module loading when
+    // many test workers run in parallel.
+    expect(await screen.findByText("Scan your gallery", {}, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it("shows a budget-over-limit notification in the bell dropdown", async () => {
