@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { useAccountStore } from "@/features/finance/store/accountStore";
 import { useSubscriptionStore } from "@/features/finance/store/subscriptionStore";
 import { toLocalDateString } from "@/utils/localDate";
 import UpcomingBillsWarning from "./UpcomingBillsWarning";
@@ -31,7 +32,7 @@ function renderWarning(balance: number, subscriptions: Subscription[]) {
   useSubscriptionStore.setState({ subscriptions, loadSubscriptions: async () => {} });
   return render(
     <MemoryRouter>
-      <UpcomingBillsWarning balance={balance} />
+      <UpcomingBillsWarning balance={balance} transactions={[]} />
     </MemoryRouter>
   );
 }
@@ -39,6 +40,7 @@ function renderWarning(balance: number, subscriptions: Subscription[]) {
 describe("UpcomingBillsWarning", () => {
   beforeEach(() => {
     useSubscriptionStore.setState({ subscriptions: [] });
+    useAccountStore.setState({ accounts: [], loadAccounts: async () => {} });
   });
 
   it("warns when bills due soon exceed the balance", () => {
@@ -63,6 +65,25 @@ describe("UpcomingBillsWarning", () => {
 
   it("stays quiet with no subscriptions", () => {
     const { container } = renderWarning(-500, []);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("warns for a tracked account that cannot cover its own bills", () => {
+    useAccountStore.setState({
+      accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#000", openingBalance: 1000 }],
+      loadAccounts: async () => {},
+    });
+    renderWarning(50000, [bill({ account: "Cash" })]);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Cash");
+  });
+
+  it("ignores accounts without an opening balance", () => {
+    useAccountStore.setState({
+      accounts: [{ name: "Cash", type: "cash", icon: "wallet", color: "#000" }],
+      loadAccounts: async () => {},
+    });
+    const { container } = renderWarning(50000, [bill({ account: "Cash" })]);
     expect(container).toBeEmptyDOMElement();
   });
 });
