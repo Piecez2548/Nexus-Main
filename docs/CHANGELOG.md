@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-05 — Dependency security updates and tooling
+
+- Updated `@capacitor/android`/`core`/`cli` (8.6.0, clears a critical advisory), `zod`, `vite`, `concurrently`, `electron` and `dompurify` within their existing major versions. `vitest` is unchanged (npm cannot resolve its peer set). Remaining advisories are recorded in [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md). Verified with TypeScript, lint, production build, the full unit suite (465 files / 2,926 tests) and a debug build launched on a physical Android device.
+- The unit suite runs with eight workers (was four) and the TopBar gallery-scanner test waits up to 5 seconds for its lazy-loaded panel.
+- The locally generated Capacitor `android/` project in this repository is git-ignored.
+
 ## 2026-11-01 — Per-account bill warning
 
 - The Dashboard upcoming-bills warning now also checks each account: for subscriptions that name an account, the account's balance plus its own expected income minus its own bills due in the next 14 days (`projectAccountShortfalls` in `upcomingCashFlow.ts`). Accounts that go below zero are listed by name.

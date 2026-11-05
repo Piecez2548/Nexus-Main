@@ -244,6 +244,7 @@ A handful of device-local tables outside the sync/encryption system keep their o
 Dexie has no foreign-key enforcement — all relationships are informal, held together by application-level fields and guarded in the service layer, not the database layer:
 
 - `Transaction.account` / `Transaction.toAccount` → `Account.name` (string match, not an id reference). `accountService.remove()` refuses to delete an account still referenced by any transaction; `accountService.merge()` reassigns every referencing transaction before deleting the source account.
+- `Account.openingBalance` (optional number, no index, no Dexie version bump): balance before the first tracked transaction; for `credit_card`/`loan` accounts it is the amount owed. Missing means 0. Per-account balances are derived, never stored (`src/features/finance/utils/accountBalance.ts`).
 - `Transaction.category` → `Category.name`. Same guard/merge pattern in `categoryService`.
 - `Transaction.recipient` → `RecipientProfile.recipientKey` (derived key, not a stored id) — `recipientProfileService.recordUsage()` upserts a profile on every transaction save that has a recipient.
 - `GoalMilestoneEvent.goalSyncId` → `Goal.syncId` (cross-device-stable UUID, not the local `id` — since a milestone event and its goal must still line up correctly after a sync pulls goals with new local ids on another device).
