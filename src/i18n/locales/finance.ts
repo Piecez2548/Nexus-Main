@@ -481,6 +481,7 @@ export const financeTranslations = {
       },
       galleryScan: {
         scanningNew: "Checking new slips…",
+        cancelAutoScan: "Cancel",
         scanning: "Scanning slip {{done}}/{{total}}…",
         noneFound: "No slips found in the selected images",
         noImagesSelected: "No supported images were found in the selected folder",
@@ -1027,6 +1028,7 @@ export const financeTranslations = {
       },
       galleryScan: {
         scanningNew: "กำลังตรวจสลิปใหม่…",
+        cancelAutoScan: "ยกเลิก",
         scanning: "กำลังสแกนสลิป {{done}}/{{total}}…",
         noneFound: "ไม่พบสลิปในรูปที่เลือก",
         noImagesSelected: "ไม่พบไฟล์รูปภาพที่รองรับในโฟลเดอร์ที่เลือก",

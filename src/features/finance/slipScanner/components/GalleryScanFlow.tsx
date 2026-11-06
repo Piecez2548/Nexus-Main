@@ -388,6 +388,16 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         {isAutomaticScan ? t("slipScanner.galleryScan.scanningNew") : t("transactions.scanGallery")}
       </button>
 
+      {isAutomaticScan && busy && (
+        <button
+          type="button"
+          onClick={scan.cancel}
+          className="min-h-11 rounded-xl border border-zinc-300 px-3 py-2 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+        >
+          {t("slipScanner.galleryScan.cancelAutoScan")}
+        </button>
+      )}
+
       {reviewCandidates.length > 0 && !reviewOpen && (
         <button
           type="button"
