@@ -34,6 +34,8 @@ type Phase = "idle" | "banks";
 // sessions or duplicate previews.
 let automaticScanInFlight = false;
 
+const AUTO_SCAN_WINDOW_MS = 30 * 86_400_000;
+
 interface Props {
   // Injectable so tests can supply a fake instead of the real jsQR + Tesseract
   // pipeline (injectable so tests can supply a deterministic extractor).
@@ -118,7 +120,16 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         autoImportStartedRef.current = false;
         setRunInBackground(false);
         setIsAutomaticScan(true);
-        await scanRef.current.scanNativeGallery(true);
+        // Hands-free scans only look at recent photos (last 30 days, or since
+        // the last scan if the app was closed longer): reading every photo of a
+        // large gallery in full resolution is far too slow for an automatic
+        // run. The scan cache still skips anything already handled, and the
+        // manual "Scan Gallery" button covers the whole gallery.
+        const windowStart = Date.now() - AUTO_SCAN_WINDOW_MS;
+        const sinceCursor = new Date(
+          lastScanAt !== null ? Math.min(windowStart, lastScanAt - 86_400_000) : windowStart,
+        ).toISOString();
+        await scanRef.current.scanNativeGallery(true, undefined, false, sinceCursor);
         if (active) {
           markScanned();
           setScanSettled(true);
