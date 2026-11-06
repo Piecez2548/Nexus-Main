@@ -80,6 +80,10 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
   const [reviewCandidates, setReviewCandidates] = useState<SlipCandidate[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const autoImportStartedRef = useRef(false);
+  // A scan the person started opens the review sheet when it leaves slips to
+  // check; a hands-free scan must not pop a screen open by itself -- it leaves
+  // the "Review pending" button instead.
+  const openReviewWhenSettledRef = useRef(true);
 
   const scan = useFullGalleryScan(extractor);
   const markScanned = useScanScheduleStore((state) => state.markScanned);
@@ -118,6 +122,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         if (!permission.canScanGallery || !active) return;
 
         autoImportStartedRef.current = false;
+        openReviewWhenSettledRef.current = false;
         setRunInBackground(false);
         setIsAutomaticScan(true);
         // Hands-free scans only look at recent photos (last 30 days, or since
@@ -166,8 +171,9 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
     let active = true;
     void scanCandidateRepository.listCompletedRuns().then((pending) => {
       if (!active || pending.length === 0) return;
+      // Restored silently: the "Review pending" button shows the count, the
+      // sheet opens only when the person taps it.
       setReviewCandidates(pending);
-      setReviewOpen(true);
     });
     return () => {
       active = false;
@@ -212,6 +218,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
     setPhase("idle"); // close the popup before scanning
     setScanSettled(false);
     autoImportStartedRef.current = false;
+    openReviewWhenSettledRef.current = true;
     const dateRange: ScanOptions["dateRange"] =
       dateFrom || dateTo ? { from: dateFrom || undefined, to: dateTo || undefined } : undefined;
     // A date range is a one-off request, not a remembered preference (unlike
@@ -339,7 +346,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       if (visibleCandidates.length > 0) {
         toast.error(t("slipScanner.galleryScan.noVerifiedQr"));
         scan.reset({ preserveCandidateIds: candidatesForReview.map((candidate) => candidate.id) });
-        setReviewOpen(candidatesForReview.length > 0);
+        setReviewOpen(openReviewWhenSettledRef.current && candidatesForReview.length > 0);
       } else {
         toast.error(t("slipScanner.galleryScan.noneFound"));
         scan.reset();
@@ -357,7 +364,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       if (!result) {
         scan.reset({ preserveCandidateIds: visibleCandidates.map((candidate) => candidate.id) });
         setReviewCandidates(visibleCandidates);
-        setReviewOpen(visibleCandidates.length > 0);
+        setReviewOpen(openReviewWhenSettledRef.current && visibleCandidates.length > 0);
         return;
       }
 
@@ -373,7 +380,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       );
       setReviewCandidates(remaining);
       scan.reset({ preserveCandidateIds: remaining.map((candidate) => candidate.id) });
-      setReviewOpen(remaining.length > 0);
+      setReviewOpen(openReviewWhenSettledRef.current && remaining.length > 0);
     })();
     // scanSettled is the explicit completion signal from the scan promise, so
     // candidates are fully populated before this effect can import them.
