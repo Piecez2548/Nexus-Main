@@ -3,7 +3,7 @@
 ## 2026-11-06 — Optional auto-save for trusted payment notifications (Android)
 
 - New opt-in Settings switch (off by default, under Payment Notification Capture): a payment notification is saved without the confirm sheet only when the bank app is recognised, the amount parsed, and the recipient is one the person has categorised before (`isHighConfidenceNotification`). It goes through the same Smart Import path (duplicate guard, import history), then a toast "Saved ฿X to Y" with an Undo action (new optional `action` on toasts) removes it. Everything else still uses the confirm sheet, and a failed save falls back to it.
-- Limits: notification text has no income/expense direction, so auto-saved rows are always expenses. Real bank notification formats are still unverified on a device. Editing from the toast (beyond Undo) and further banks are Planned. No unit test yet for the `useNotificationAutoSave` hook itself.
+- Limits: notification text has no income/expense direction, so auto-saved rows are always expenses. Real bank notification formats are still unverified on a device. Editing from the toast (beyond Undo) and further banks are Planned.
 
 ## 2026-11-06 — Auto-scan new slips on app open/resume (Android)
 
