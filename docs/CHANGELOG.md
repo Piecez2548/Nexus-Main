@@ -11,6 +11,7 @@
 - New Settings switch "Auto-scan new slips" (Android only) flips the existing `scanOnStartup` config; `scanOnStartup` now defaults to on for new installs. It takes effect on the next app launch.
 - While an automatic scan runs, a full-screen progress ring (percent and photo count) is shown, with a "Run in background" button that hides it while the scan continues, plus Pause and Cancel. A Cancel button appears next to the scanner button while an automatic scan is running; cancelling uses the existing scan cancel and already-scanned photos are not rescanned.
 - The automatic scan only looks at photos from the last 30 days (or since the last scan, if longer ago) instead of re-enumerating the whole gallery (`sinceCursor` scan option); the manual Scan Gallery button still scans everything. Reading full-resolution originals through the native bridge remains the main per-photo cost (downscaling in the native plugin is Planned).
+- Scans now use the animated progress ring on web and native alike (gradient ring with glow, detailed counters for scans the person starts), a success animation after slips are saved (reduced-motion safe), and OCR is warmed up in the background when the Scan Gallery button is pressed so the first OCR slip does not wait for the engine to start (`prewarmOcr`).
 - Not changed: web cannot scan automatically (browsers cannot read the gallery); notification-captured payments still need a tap to confirm (auto-confirm is Planned). Not yet verified on a physical device.
 
 ## 2026-11-05 — Dependency security updates and tooling

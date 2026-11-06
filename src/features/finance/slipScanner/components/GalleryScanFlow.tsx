@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Images } from "lucide-react";
 import { App } from "@capacitor/app";
 
-import ScanControls from "@/features/finance/slipScanner/components/ScanControls";
+import { prewarmOcr } from "@/features/finance/slipScanner/engine/ocr/ocrWorkerPool";
+import ScanSuccessBurst from "@/features/finance/slipScanner/components/ScanSuccessBurst";
 import ScanProgressRing from "@/features/finance/slipScanner/components/ScanProgressRing";
-import ScanProgressDashboard from "@/features/finance/slipScanner/components/ScanProgressDashboard";
 import ImportPreview from "@/features/finance/slipScanner/components/ImportPreview";
 import { useFullGalleryScan } from "@/features/finance/slipScanner/hooks/useFullGalleryScan";
 import { useSmartImport } from "@/features/finance/slipScanner/hooks/useSmartImport";
@@ -76,6 +76,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
   const [rangeImageCount, setRangeImageCount] = useState<number | null>(null);
   const [isAutomaticScan, setIsAutomaticScan] = useState(false);
   const [runInBackground, setRunInBackground] = useState(false);
+  const [burstCount, setBurstCount] = useState<number | null>(null);
   const [scanSettled, setScanSettled] = useState(false);
   const [reviewCandidates, setReviewCandidates] = useState<SlipCandidate[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -219,6 +220,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
     setScanSettled(false);
     autoImportStartedRef.current = false;
     openReviewWhenSettledRef.current = true;
+    setRunInBackground(false);
     const dateRange: ScanOptions["dateRange"] =
       dateFrom || dateTo ? { from: dateFrom || undefined, to: dateTo || undefined } : undefined;
     // A date range is a one-off request, not a remembered preference (unlike
@@ -297,6 +299,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       const count = result.importedIds.length;
       const failed = result.failed.length;
       const duplicates = result.skippedDuplicates.length;
+      if (count > 0) setBurstCount(count);
 
       if (failed === 0 && duplicates === 0) {
         toast.success(t("slipScanner.galleryScan.imported", { count }));
@@ -405,7 +408,12 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
     <>
       <button
         type="button"
-        onClick={() => setPhase("banks")}
+        onClick={() => {
+          // Warm OCR while the person picks banks/files, so the scan itself
+          // doesn't start with a long engine + language-data load.
+          prewarmOcr();
+          setPhase("banks");
+        }}
         disabled={busy || smartImport.running || reviewCandidates.length > 0}
         className="flex items-center gap-2 rounded-xl border border-zinc-300 dark:border-zinc-700 px-4 py-2 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
@@ -455,14 +463,19 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         webFolderSelection={!isNativeGalleryAvailable()}
       />
 
-      {showScanOverlay && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md space-y-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-lg">
-            {scan.snapshot && <ScanProgressDashboard progress={scan.snapshot} />}
-            <ScanControls running={scan.status === "running"} onPause={scan.pause} onResume={scan.resume} onCancel={scan.cancel} />
-          </div>
-        </div>
+      {showScanOverlay && !runInBackground && (
+        <ScanProgressRing
+          progress={scan.snapshot}
+          running={scan.status === "running"}
+          onPause={scan.pause}
+          onResume={scan.resume}
+          onCancel={scan.cancel}
+          onBackground={() => setRunInBackground(true)}
+          showDetails
+        />
       )}
+
+      {burstCount !== null && <ScanSuccessBurst count={burstCount} onDone={() => setBurstCount(null)} />}
 
       {showAutoRing && (
         <ScanProgressRing
