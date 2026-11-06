@@ -3,6 +3,7 @@ import { Images } from "lucide-react";
 import { App } from "@capacitor/app";
 
 import ScanControls from "@/features/finance/slipScanner/components/ScanControls";
+import ScanProgressRing from "@/features/finance/slipScanner/components/ScanProgressRing";
 import ScanProgressDashboard from "@/features/finance/slipScanner/components/ScanProgressDashboard";
 import ImportPreview from "@/features/finance/slipScanner/components/ImportPreview";
 import { useFullGalleryScan } from "@/features/finance/slipScanner/hooks/useFullGalleryScan";
@@ -72,6 +73,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
   const [dateTo, setDateTo] = useState("");
   const [rangeImageCount, setRangeImageCount] = useState<number | null>(null);
   const [isAutomaticScan, setIsAutomaticScan] = useState(false);
+  const [runInBackground, setRunInBackground] = useState(false);
   const [scanSettled, setScanSettled] = useState(false);
   const [reviewCandidates, setReviewCandidates] = useState<SlipCandidate[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -114,6 +116,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         if (!permission.canScanGallery || !active) return;
 
         autoImportStartedRef.current = false;
+        setRunInBackground(false);
         setIsAutomaticScan(true);
         await scanRef.current.scanNativeGallery(true);
         if (active) {
@@ -375,6 +378,10 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
   // are all communicated via toast (above) and don't need a lingering modal,
   // which would otherwise have nothing to dismiss it.
   const showScanOverlay = phase === "idle" && busy && !isAutomaticScan;
+  // The hands-free scan gets a full-screen ring so it is hard to miss; the
+  // person can send it to the background and it keeps running behind the
+  // small indicator + Cancel button.
+  const showAutoRing = isAutomaticScan && busy && !runInBackground;
 
   return (
     <>
@@ -437,6 +444,17 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
             <ScanControls running={scan.status === "running"} onPause={scan.pause} onResume={scan.resume} onCancel={scan.cancel} />
           </div>
         </div>
+      )}
+
+      {showAutoRing && (
+        <ScanProgressRing
+          progress={scan.snapshot}
+          running={scan.status === "running"}
+          onPause={scan.pause}
+          onResume={scan.resume}
+          onCancel={scan.cancel}
+          onBackground={() => setRunInBackground(true)}
+        />
       )}
 
       <ImportPreview

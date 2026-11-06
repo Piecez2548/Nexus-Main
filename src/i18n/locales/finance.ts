@@ -482,6 +482,10 @@ export const financeTranslations = {
       galleryScan: {
         scanningNew: "Checking new slips…",
         cancelAutoScan: "Cancel",
+        ringTitle: "Checking new slips",
+        ringCount: "{{done}} of {{total}} photos",
+        ringPreparing: "Preparing…",
+        runInBackground: "Run in background",
         scanning: "Scanning slip {{done}}/{{total}}…",
         noneFound: "No slips found in the selected images",
         noImagesSelected: "No supported images were found in the selected folder",
@@ -1029,6 +1033,10 @@ export const financeTranslations = {
       galleryScan: {
         scanningNew: "กำลังตรวจสลิปใหม่…",
         cancelAutoScan: "ยกเลิก",
+        ringTitle: "กำลังตรวจสลิปใหม่",
+        ringCount: "{{done}} จาก {{total}} รูป",
+        ringPreparing: "กำลังเตรียม…",
+        runInBackground: "ทำงานเบื้องหลัง",
         scanning: "กำลังสแกนสลิป {{done}}/{{total}}…",
         noneFound: "ไม่พบสลิปในรูปที่เลือก",
         noImagesSelected: "ไม่พบไฟล์รูปภาพที่รองรับในโฟลเดอร์ที่เลือก",

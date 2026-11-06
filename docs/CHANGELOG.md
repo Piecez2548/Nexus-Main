@@ -9,7 +9,7 @@
 
 - On Android the Gallery Scanner now loads at startup and scans only new gallery photos when the app opens and each time it returns to the foreground. It reuses the existing pipeline: incremental scan cache, scan scheduler (`decideScan`, new `resume` trigger throttled to one scan per 5 minutes; battery/charging gates unchanged), and Smart Import (QR-verified slips import automatically; OCR/unverified ones wait in Import Preview). The gallery permission is requested only after the scheduler allows a scan.
 - New Settings switch "Auto-scan new slips" (Android only) flips the existing `scanOnStartup` config; `scanOnStartup` now defaults to on for new installs. It takes effect on the next app launch.
-- A Cancel button appears next to the scanner button while an automatic scan is running; cancelling uses the existing scan cancel and already-scanned photos are not rescanned.
+- While an automatic scan runs, a full-screen progress ring (percent and photo count) is shown, with a "Run in background" button that hides it while the scan continues, plus Pause and Cancel. A Cancel button appears next to the scanner button while an automatic scan is running; cancelling uses the existing scan cancel and already-scanned photos are not rescanned.
 - Not changed: web cannot scan automatically (browsers cannot read the gallery); notification-captured payments still need a tap to confirm (auto-confirm is Planned). Not yet verified on a physical device.
 
 ## 2026-11-05 — Dependency security updates and tooling
