@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Images } from "lucide-react";
+import { App } from "@capacitor/app";
 
 import ScanControls from "@/features/finance/slipScanner/components/ScanControls";
 import ScanProgressDashboard from "@/features/finance/slipScanner/components/ScanProgressDashboard";
@@ -77,37 +78,44 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
   const autoImportStartedRef = useRef(false);
 
   const scan = useFullGalleryScan(extractor);
-  const scheduleConfig = useScanScheduleStore((state) => state.config);
-  const lastScanAt = useScanScheduleStore((state) => state.lastScanAt);
   const markScanned = useScanScheduleStore((state) => state.markScanned);
-
-  // On Android, scan only new gallery images when the transaction page opens.
-  // The OS permission is requested once; subsequent visits are hands-free and
-  // the persistent scan cache prevents rescanning the same image.
+  // The resume listener outlives any single render, so it reads the latest
+  // scan controller through a ref instead of capturing a stale closure.
+  const scanRef = useRef(scan);
   useEffect(() => {
-    if (!automaticScan || !isNativeGalleryAvailable() || automaticScanInFlight) return;
+    scanRef.current = scan;
+  });
+
+  // On Android, scan only new gallery images when the app opens and every time
+  // it returns to the foreground. The OS permission is requested once;
+  // afterwards this is hands-free and the persistent scan cache prevents
+  // rescanning the same image. Schedule config and last-scan time are read
+  // fresh from the store on every trigger, so the Settings toggle applies
+  // immediately and resume triggers are throttled by decideScan.
+  useEffect(() => {
+    if (!automaticScan || !isNativeGalleryAvailable()) return;
 
     let active = true;
-    automaticScanInFlight = true;
 
-    void (async () => {
+    async function runAutomaticScan(trigger: "startup" | "resume"): Promise<void> {
+      if (automaticScanInFlight) return;
+      automaticScanInFlight = true;
       try {
+        const { config, lastScanAt } = useScanScheduleStore.getState();
+        // Cheap policy check first so a disabled/throttled trigger never
+        // surfaces an OS permission prompt.
+        const decision = decideScan({ trigger, config, device: await getDeviceState(), lastScanAt });
+        if (!decision.shouldScan || !active) return;
+
         let permission = await galleryPermissionService.check();
         if (permission.status === "prompt" || permission.status === "denied") {
           permission = await galleryPermissionService.request();
         }
         if (!permission.canScanGallery || !active) return;
 
-        const decision = decideScan({
-          trigger: "scheduled",
-          config: scheduleConfig,
-          device: await getDeviceState(),
-          lastScanAt,
-        });
-        if (!decision.shouldScan || !active) return;
-
+        autoImportStartedRef.current = false;
         setIsAutomaticScan(true);
-        await scan.scanNativeGallery(true);
+        await scanRef.current.scanNativeGallery(true);
         if (active) {
           markScanned();
           setScanSettled(true);
@@ -121,13 +129,19 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         automaticScanInFlight = false;
         if (active) setIsAutomaticScan(false);
       }
-    })();
+    }
+
+    void runAutomaticScan("startup");
+    const listenerPromise = App.addListener("resume", () => {
+      void runAutomaticScan("resume");
+    });
 
     return () => {
       active = false;
+      void listenerPromise.then((handle) => handle.remove());
     };
-    // Run once for this page visit. Schedule values are intentionally captured
-    // at entry; changing settings applies on the next visit.
+    // Re-subscribing on every render would drop in-flight triggers; all
+    // changing inputs are read through refs/getState above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [automaticScan]);
 

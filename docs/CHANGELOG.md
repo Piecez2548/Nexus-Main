@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-06 — Optional auto-save for trusted payment notifications (Android)
+
+- New opt-in Settings switch (off by default, under Payment Notification Capture): a payment notification is saved without the confirm sheet only when the bank app is recognised, the amount parsed, and the recipient is one the person has categorised before (`isHighConfidenceNotification`). It goes through the same Smart Import path (duplicate guard, import history), then a toast "Saved ฿X to Y" with an Undo action (new optional `action` on toasts) removes it. Everything else still uses the confirm sheet, and a failed save falls back to it.
+- Limits: notification text has no income/expense direction, so auto-saved rows are always expenses. Real bank notification formats are still unverified on a device. Editing from the toast (beyond Undo) and further banks are Planned. No unit test yet for the `useNotificationAutoSave` hook itself.
+
+## 2026-11-06 — Auto-scan new slips on app open/resume (Android)
+
+- On Android the Gallery Scanner now loads at startup and scans only new gallery photos when the app opens and each time it returns to the foreground. It reuses the existing pipeline: incremental scan cache, scan scheduler (`decideScan`, new `resume` trigger throttled to one scan per 5 minutes; battery/charging gates unchanged), and Smart Import (QR-verified slips import automatically; OCR/unverified ones wait in Import Preview). The gallery permission is requested only after the scheduler allows a scan.
+- New Settings switch "Auto-scan new slips" (Android only) flips the existing `scanOnStartup` config; `scanOnStartup` now defaults to on for new installs. It takes effect on the next app launch.
+- Not changed: web cannot scan automatically (browsers cannot read the gallery); notification-captured payments still need a tap to confirm (auto-confirm is Planned). A user cancel control for an in-flight automatic scan is Planned. Not yet verified on a physical device.
+
 ## 2026-11-05 — Dependency security updates and tooling
 
 - Updated `@capacitor/android`/`core`/`cli` (8.6.0, clears a critical advisory), `zod`, `vite`, `concurrently`, `electron` and `dompurify` within their existing major versions. `vitest` is unchanged (npm cannot resolve its peer set). Remaining advisories are recorded in [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md). Verified with TypeScript, lint, production build, the full unit suite (465 files / 2,926 tests) and a debug build launched on a physical Android device.
