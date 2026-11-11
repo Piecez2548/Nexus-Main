@@ -7,6 +7,20 @@
 - Backups made before this change still import: the retired keys are shape-checked and ignored. New backups no longer contain them, and `trades` is no longer a required backup key.
 - Removed the external "Nexus Tools" link from the bottom of the sidebar and the mobile menu. The Project Hub card that opens Nexus Tools is unchanged.
 
+## 2026-11-06 — Optional auto-save for trusted payment notifications (Android)
+
+- New opt-in Settings switch (off by default, under Payment Notification Capture): a payment notification is saved without the confirm sheet only when the bank app is recognised, the amount parsed, and the recipient is one the person has categorised before (`isHighConfidenceNotification`). It goes through the same Smart Import path (duplicate guard, import history), then a toast "Saved ฿X to Y" with an Undo action (new optional `action` on toasts) removes it. Everything else still uses the confirm sheet, and a failed save falls back to it.
+- Limits: notification text has no income/expense direction, so auto-saved rows are always expenses. Real bank notification formats are still unverified on a device. Editing from the toast (beyond Undo) and further banks are Planned.
+
+## 2026-11-06 — Auto-scan new slips on app open/resume (Android)
+
+- On Android the Gallery Scanner now loads at startup and scans only new gallery photos when the app opens and each time it returns to the foreground. It reuses the existing pipeline: incremental scan cache, scan scheduler (`decideScan`, new `resume` trigger throttled to one scan per 5 minutes; battery/charging gates unchanged), and Smart Import (QR-verified slips import automatically; OCR/unverified ones wait in Import Preview). The gallery permission is requested only after the scheduler allows a scan.
+- New Settings switch "Auto-scan new slips" (Android only) flips the existing `scanOnStartup` config; `scanOnStartup` now defaults to on for new installs. It takes effect on the next app launch.
+- While an automatic scan runs, a full-screen progress ring (percent and photo count) is shown, with a "Run in background" button that hides it while the scan continues, plus Pause and Cancel. A Cancel button appears next to the scanner button while an automatic scan is running; cancelling uses the existing scan cancel and already-scanned photos are not rescanned.
+- The automatic scan only looks at photos from the last 30 days (or since the last scan, if longer ago) instead of re-enumerating the whole gallery (`sinceCursor` scan option); the manual Scan Gallery button still scans everything. Reading full-resolution originals through the native bridge remains the main per-photo cost (downscaling in the native plugin is Planned).
+- Scans now use the animated progress ring on web and native alike (gradient ring with glow, detailed counters for scans the person starts), a success animation after slips are saved (reduced-motion safe), and OCR is warmed up in the background when the Scan Gallery button is pressed so the first OCR slip does not wait for the engine to start (`prewarmOcr`).
+- Not changed: web cannot scan automatically (browsers cannot read the gallery); notification-captured payments still need a tap to confirm (auto-confirm is Planned). Not yet verified on a physical device.
+
 ## 2026-11-05 — Dependency security updates and tooling
 
 - Updated `@capacitor/android`/`core`/`cli` (8.6.0, clears a critical advisory), `zod`, `vite`, `concurrently`, `electron` and `dompurify` within their existing major versions. `vitest` is unchanged (npm cannot resolve its peer set). Remaining advisories are recorded in [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md). Verified with TypeScript, lint, production build, the full unit suite (465 files / 2,926 tests) and a debug build launched on a physical Android device.
