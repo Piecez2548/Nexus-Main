@@ -73,7 +73,7 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-for (const path of ["/projects", "/projects/", "/projects/index.html", "/dashboard", "/trading?from=nexus-all"]) {
+for (const path of ["/projects", "/projects/", "/projects/index.html", "/dashboard", "/budget?from=nexus-all"]) {
   test(`anonymous ${path} requires login and offers registration`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("textbox", { name: "Email", exact: true })).toBeVisible();
@@ -143,7 +143,7 @@ for (const direct of [false, true]) {
       localStorage.setItem("nexus-app-lock", JSON.stringify({ state: { pinHash: "fixture-hash", salt: "fixture-salt", rememberUntil: null, encryptionEnabled: false }, version: 0 }));
       sessionStorage.removeItem("nexus-session-unlocked");
     });
-    await page.goto(direct ? "/trading?view=open" : "/projects");
+    await page.goto(direct ? "/budget?view=open" : "/projects");
     await expect(page).toHaveURL(/\/projects/);
     await expect(page.locator("#lock-pin")).toHaveCount(0);
     await page.getByRole("textbox", { name: "Email", exact: true }).fill("fixture@example.test");
@@ -157,7 +157,7 @@ for (const direct of [false, true]) {
     await expect(page.locator("#lock-pin")).toBeVisible();
     await expect(page.locator(".nexus-main")).toHaveCount(0);
     await expect(page.locator('input[type="email"]')).toHaveCount(0);
-    if (direct) await expect(page).toHaveURL(/\/trading\?view=open$/);
+    if (direct) await expect(page).toHaveURL(/\/budget\?view=open$/);
     await page.goto("/projects");
     await expect(page.locator(".project-hub")).toBeVisible();
     await expect(page.locator("#lock-pin")).toHaveCount(0);
