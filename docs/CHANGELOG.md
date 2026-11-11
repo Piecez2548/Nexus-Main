@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-11 — Trading, Portfolio and Nexus Tools link removed
+
+- Removed the Trading module (dashboard, journal, strategies, watchlist, economic calendar, trade drawer) and the Portfolio module, which overlapped with the separate XAU Dashboard. Their routes (`/trading/*`), sidebar and mobile menu group, command palette entries, global-search results, the Dashboard Trading/Portfolio panels, the Executive Trading snapshot, the daily-summary trading P/L line and their translation keys are gone.
+- Dexie v28 deletes the `trades`, `holdings`, `strategies`, `watchlistItems` and `economicEvents` tables on upgrade, together with their pending sync tombstones and sync cursors. The data cannot be recovered on the device. These tables are no longer synced, backed up or covered by encryption migration. Rows already on the sync server are left there and are no longer pulled.
+- Backups made before this change still import: the retired keys are shape-checked and ignored. New backups no longer contain them, and `trades` is no longer a required backup key.
+- Removed the external "Nexus Tools" link from the bottom of the sidebar and the mobile menu. The Project Hub card that opens Nexus Tools is unchanged.
+
 ## 2026-11-06 — Optional auto-save for trusted payment notifications (Android)
 
 - New opt-in Settings switch (off by default, under Payment Notification Capture): a payment notification is saved without the confirm sheet only when the bank app is recognised, the amount parsed, and the recipient is one the person has categorised before (`isHighConfidenceNotification`). It goes through the same Smart Import path (duplicate guard, import history), then a toast "Saved ฿X to Y" with an Undo action (new optional `action` on toasts) removes it. Everything else still uses the confirm sheet, and a failed save falls back to it.
