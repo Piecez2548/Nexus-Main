@@ -34,7 +34,8 @@ export interface ScanDecision {
 
 export const DEFAULT_SCAN_SCHEDULE: ScanScheduleConfig = {
   enabled: true,
-  scanOnStartup: true,
+  // Off by default: scanning the gallery on open reads the person's photos, so it is opt-in.
+  scanOnStartup: false,
   intervalMinutes: 360, // 6h
   minBatteryPercent: 20,
   requireCharging: false,
