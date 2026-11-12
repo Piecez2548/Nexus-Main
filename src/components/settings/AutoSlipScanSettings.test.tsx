@@ -26,18 +26,20 @@ describe("AutoSlipScanSettings", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("is on by default and toggles the scan-on-open config", async () => {
+  it("is off by default (opt-in) and toggles the scan-on-open config", async () => {
     const user = userEvent.setup();
     render(<AutoSlipScanSettings />);
 
     const toggle = screen.getByRole("switch", { name: "Auto-scan on open" });
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-
-    await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "false");
     expect(useScanScheduleStore.getState().config.scanOnStartup).toBe(false);
 
     await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
     expect(useScanScheduleStore.getState().config).toMatchObject({ enabled: true, scanOnStartup: true });
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(useScanScheduleStore.getState().config.scanOnStartup).toBe(false);
   });
 });

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-12 — Auto-scan on open is opt-in
+
+- `scanOnStartup` now defaults to off, so the gallery is scanned on app open or resume only after the person turns on "Auto-scan new slips" in Settings (Android). This replaces the "defaults to on for new installs" behavior from 2026-11-06 and matches the Nexus workspace copy. A setting someone already saved is kept. The Scan Gallery button is unchanged.
+
 ## 2026-11-11 — Trading, Portfolio and Nexus Tools link removed
 
 - Removed the Trading module (dashboard, journal, strategies, watchlist, economic calendar, trade drawer) and the Portfolio module, which overlapped with the separate XAU Dashboard. Their routes (`/trading/*`), sidebar and mobile menu group, command palette entries, global-search results, the Dashboard Trading/Portfolio panels, the Executive Trading snapshot, the daily-summary trading P/L line and their translation keys are gone.
