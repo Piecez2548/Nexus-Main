@@ -6,7 +6,8 @@
 - Cause: the new K PLUS slip has fine building artwork behind the text. The OCR preprocessing darkens bright, low-contrast images, raises contrast and sharpens them before binarising, and on this slip that brought the texture back and buried the amount line. Plain binarising drops the texture and reads the amount correctly.
 - Fix: when the first OCR pass finds no amount, `runOcrFallback` retries once on a plain binarised image (`preprocessForOcr(bytes, { enhance: false })`) and keeps that result only if it found an amount. Slips that already read correctly are unchanged.
 - The OCR engine version is now "2", so images cached as scanned by the old OCR are scanned again.
-- Checked against two real K PLUS slips with Tesseract on desktop (47.00 and 75.00 baht).
+- Parser: an amount rule no longer stops at a zero. On a K PLUS transfer slip OCR read "1,300.00 นบาท", so the only currency-marked number left was the fee "0.00 บาท" and the parser gave up. Each rule now takes its first positive match, and the "จำนวน" label also matches when OCR splits SARA AM into two code points ("จํานวน"). Guessing from an unmarked number is still skipped when the only marked amount is a zero fee. Parser version is now "2".
+- Checked on the phone (Nexus APK): 3 of 4 K PLUS slips read correctly after the OCR fix; the fourth (1,300 baht) needed the parser fix, checked on desktop against that slip's OCR text.
 
 ## 2026-11-12 — Automatic slip scan reads only banking-app albums (Android)
 
