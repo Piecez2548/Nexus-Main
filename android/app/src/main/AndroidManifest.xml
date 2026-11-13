@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <!-- Payment Notification Capture: bound automatically by the system
+             once the user grants Notification Access in system Settings (a
+             special-access grant with no manifest <uses-permission> and no
+             in-app request dialog; see PaymentNotificationCapturePlugin's
+             openAccessSettings). exported=true is required for the system to
+             bind; BIND_NOTIFICATION_LISTENER_SERVICE is signature-level and
+             held only by the OS, so no third-party app can bind to it. -->
+        <service
+            android:name=".notifications.PaymentNotificationListenerService"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!-- Workout Tracker: foreground-only GPS route tracking (Running/Cycling/
+         Walking). Standard runtime permission: @capacitor/geolocation's
+         requestPermissions() shows the normal system dialog, no special-access
+         settings flow like Notification Access above. No background location
+         permission requested: tracking only runs while the app is
+         foregrounded (see docs/SECURITY.md's Workout Tracker section). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Gallery Scanner (GS-005): read gallery images for slip scanning.
+         READ_MEDIA_IMAGES = Android 13+ (API 33); READ_MEDIA_VISUAL_USER_SELECTED
+         = Android 14+ (API 34+) partial "selected photos" access; the legacy
+         READ_EXTERNAL_STORAGE covers Android 12 and below only. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+</manifest>
