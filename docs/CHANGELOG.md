@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-13 — Slip review queue survives scans
+
+- The review button disappeared after an automatic scan that found nothing new: a finished scan replaced the review queue instead of adding to it, so slips restored from an earlier scan were dropped. Scans now add to the queue (`mergeReviewQueue`); a newer reading of the same image replaces the older one.
+- The queue restored on start lists only the newest candidate per image (`latestCandidatePerAsset`), so a re-scanned slip is not listed twice.
+- An automatic scan that finds nothing new no longer shows the "No slips found" error toast (a scan the person started still does).
+
 ## 2026-11-13 — Slip OCR reads K PLUS slips with a textured background
 
 - Found on a device (Nexus APK): the 4 slips in the "K PLUS" album were scanned but OCR read no amount, so nothing could be saved and the app said "No slips found".

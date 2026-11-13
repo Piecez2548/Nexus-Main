@@ -14,6 +14,7 @@ import { findBankAlbumIds } from "@/features/finance/slipScanner/gallery/media/b
 import { galleryPermissionService } from "@/features/finance/slipScanner/gallery/permission/galleryPermissionService";
 import type { ScanOptions } from "@/features/finance/slipScanner/models/scanTypes";
 import type { SlipCandidate } from "@/features/finance/slipScanner/models/slipCandidate";
+import { mergeReviewQueue } from "@/features/finance/slipScanner/services/reviewQueue";
 import type { SlipExtractor } from "@/features/finance/slipScanner/services/slipExtractionProcessor";
 import BankSelectionPopup from "@/features/finance/slipScanner/components/BankSelectionPopup";
 import { useCategoryLearningStore } from "@/features/finance/slipScanner/store/categoryLearningStore";
@@ -187,7 +188,8 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       if (!active || pending.length === 0) return;
       // Restored silently: the "Review pending" button shows the count, the
       // sheet opens only when the person taps it.
-      setReviewCandidates(pending);
+      // Merged under anything a scan already queued this session (newer wins).
+      setReviewCandidates((current) => mergeReviewQueue(pending, current));
     });
     return () => {
       active = false;
@@ -357,14 +359,18 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
 
     const candidatesToImport = visibleCandidates.filter(isVerifiedQrCandidate);
     const candidatesForReview = visibleCandidates.filter((candidate) => !isVerifiedQrCandidate(candidate));
-    setReviewCandidates(candidatesForReview);
+    // Added to the pending queue, never replacing it: an automatic scan that
+    // finds nothing new must not drop slips restored from an earlier scan.
+    setReviewCandidates((pending) => mergeReviewQueue(pending, candidatesForReview));
     if (candidatesToImport.length === 0) {
       if (visibleCandidates.length > 0) {
         toast.error(t("slipScanner.galleryScan.noVerifiedQr"));
         scan.reset({ preserveCandidateIds: candidatesForReview.map((candidate) => candidate.id) });
         setReviewOpen(openReviewWhenSettledRef.current && candidatesForReview.length > 0);
       } else {
-        toast.error(t("slipScanner.galleryScan.noneFound"));
+        // Nothing new is the normal outcome of a hands-free scan on
+        // open/resume, so only a scan the person started reports it.
+        if (openReviewWhenSettledRef.current) toast.error(t("slipScanner.galleryScan.noneFound"));
         scan.reset();
       }
       return;
@@ -379,7 +385,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       const result = await handleImport(candidatesToImport);
       if (!result) {
         scan.reset({ preserveCandidateIds: visibleCandidates.map((candidate) => candidate.id) });
-        setReviewCandidates(visibleCandidates);
+        setReviewCandidates((pending) => mergeReviewQueue(pending, visibleCandidates));
         setReviewOpen(openReviewWhenSettledRef.current && visibleCandidates.length > 0);
         return;
       }
@@ -394,7 +400,7 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
       const remaining = visibleCandidates.filter(
         (candidate) => !resolvedIds.has(candidate.id) && (!isVerifiedQrCandidate(candidate) || failedIds.has(candidate.id)),
       );
-      setReviewCandidates(remaining);
+      setReviewCandidates((pending) => mergeReviewQueue(pending.filter((candidate) => !resolvedIds.has(candidate.id)), remaining));
       scan.reset({ preserveCandidateIds: remaining.map((candidate) => candidate.id) });
       setReviewOpen(openReviewWhenSettledRef.current && remaining.length > 0);
     })();
