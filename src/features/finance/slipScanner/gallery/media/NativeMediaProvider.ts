@@ -22,10 +22,23 @@ export class NativeMediaProvider implements MediaProvider {
   readonly id = "native-media";
   readonly capabilities: MediaProviderCapabilities = { canEnumerate: true, needsPermission: true };
 
+  // `bucketIds` limits enumeration to those gallery albums (see bankAlbums.ts);
+  // undefined or empty scans the whole gallery.
+  private readonly bucketIds: readonly string[] | undefined;
+
+  constructor(bucketIds?: readonly string[]) {
+    this.bucketIds = bucketIds;
+  }
+
+  private albumFilter(): { bucketIds?: string[] } {
+    return this.bucketIds && this.bucketIds.length > 0 ? { bucketIds: [...this.bucketIds] } : {};
+  }
+
   async count(bounds?: MediaCursorBounds): Promise<number | null> {
     const { total } = await NativeGalleryMedia.count({
       sinceCursorMs: mediaCursorMs(bounds?.since),
       untilCursorMs: mediaCursorMs(bounds?.until, true),
+      ...this.albumFilter(),
     });
     return total;
   }
@@ -36,7 +49,7 @@ export class NativeMediaProvider implements MediaProvider {
     let offset = 0;
 
     for (;;) {
-      const { assets } = await NativeGalleryMedia.page({ sinceCursorMs, untilCursorMs, offset, limit: PAGE_SIZE });
+      const { assets } = await NativeGalleryMedia.page({ sinceCursorMs, untilCursorMs, ...this.albumFilter(), offset, limit: PAGE_SIZE });
       if (assets.length === 0) return;
 
       for (const asset of assets) {

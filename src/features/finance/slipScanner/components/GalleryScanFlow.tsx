@@ -10,6 +10,7 @@ import { useFullGalleryScan } from "@/features/finance/slipScanner/hooks/useFull
 import { useSmartImport } from "@/features/finance/slipScanner/hooks/useSmartImport";
 import { isNativeGalleryAvailable } from "@/features/finance/slipScanner/gallery/pickImages";
 import { NativeMediaProvider } from "@/features/finance/slipScanner/gallery/media/NativeMediaProvider";
+import { findBankAlbumIds } from "@/features/finance/slipScanner/gallery/media/bankAlbums";
 import { galleryPermissionService } from "@/features/finance/slipScanner/gallery/permission/galleryPermissionService";
 import type { ScanOptions } from "@/features/finance/slipScanner/models/scanTypes";
 import type { SlipCandidate } from "@/features/finance/slipScanner/models/slipCandidate";
@@ -122,6 +123,12 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         }
         if (!permission.canScanGallery || !active) return;
 
+        // Only the albums banking apps save slips into: faster, and the
+        // person's other photos are never opened. No bank album found (or an
+        // older APK that cannot list albums) falls back to the whole gallery.
+        const bankAlbumIds = await findBankAlbumIds();
+        if (!active) return;
+
         autoImportStartedRef.current = false;
         openReviewWhenSettledRef.current = false;
         setRunInBackground(false);
@@ -135,7 +142,13 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         const sinceCursor = new Date(
           lastScanAt !== null ? Math.min(windowStart, lastScanAt - 86_400_000) : windowStart,
         ).toISOString();
-        await scanRef.current.scanNativeGallery(true, undefined, false, sinceCursor);
+        await scanRef.current.scanNativeGallery(
+          true,
+          undefined,
+          false,
+          sinceCursor,
+          bankAlbumIds && bankAlbumIds.length > 0 ? bankAlbumIds : undefined,
+        );
         if (active) {
           markScanned();
           setScanSettled(true);

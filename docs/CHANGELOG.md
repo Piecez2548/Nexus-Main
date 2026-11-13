@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-12 — Automatic slip scan reads only banking-app albums (Android)
+
+- The automatic scan (on app open/resume) now looks only in the gallery albums that banking and wallet apps save slips into, such as K PLUS, SCB EASY, Krungthai NEXT, Krungsri, ttb, MyMo, TrueMoney and Thai-named albums such as "สลิป". This makes it faster and means other photos are never opened. Matching is by album name and path (`bankAlbums.ts`).
+- If no bank album is found, or the native plugin cannot list albums, the automatic scan falls back to the whole gallery as before. The manual Scan Gallery button still scans every photo.
+- The plugin contract gained `albums()` and an optional `bucketIds` filter on `count()`/`page()`. The Android side lives in the Nexus repository's `GalleryMediaPlugin.java`; this repository has no tracked `android/` project.
+- Not yet verified on a device: real album names can differ by bank app version and phone brand.
+
 ## 2026-11-12 — Auto-scan on open is opt-in
 
 - `scanOnStartup` now defaults to off, so the gallery is scanned on app open or resume only after the person turns on "Auto-scan new slips" in Settings (Android). This replaces the "defaults to on for new installs" behavior from 2026-11-06 and matches the Nexus workspace copy. A setting someone already saved is kept. The Scan Gallery button is unchanged.
