@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { Capacitor } from "@capacitor/core";
 
@@ -53,12 +53,15 @@ export const router = createBrowserRouter([
   { element: <AccountRouteGate />, children: [
   { path: "/projects", element: projectHub },
   { path: "/projects/index.html", element: projectHub },
+  // The native app (Nexus Finance) opens straight on the finance Dashboard.
+  // Signed-out people are sent to the hub's sign-in by AccountRouteGate and
+  // come back here afterwards; the hub itself stays at /projects.
   ...(native ? [
-    { path: "/", element: projectHub },
-    { path: "/index.html", element: projectHub },
+    { path: "/", element: <Navigate to="/dashboard" replace /> },
+    { path: "/index.html", element: <Navigate to="/dashboard" replace /> },
   ] : []),
   {
-    // Native reserves the exact root for All while retaining every explicit
+    // Native redirects the exact root to /dashboard while retaining every explicit
     // Main child route under this pathless layout. Web keeps its existing root.
     path: native ? undefined : "/",
     element: <Suspense fallback={null}><MainRoute /></Suspense>,

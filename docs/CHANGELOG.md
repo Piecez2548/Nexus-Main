@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-13 — Nexus Finance: standalone Android app
+
+- This repo now builds its own Android app, **Nexus Finance** (`com.nexus.finance`). It installs next to the Nexus hub app (`com.nexus.app`, built from the Nexus repo) instead of replacing it.
+- On native, the root now redirects to `/dashboard`, so the app opens on the finance Dashboard instead of the project hub. Signed-out people are sent to the hub's sign-in at `/projects` and return to the Dashboard afterwards. Web routing is unchanged.
+- The Android project is now tracked in `android/` (copied from the Nexus repo's project, including the gallery, notification-capture and app-settings plugins), with its own app id and name. `capacitor.config.ts` sets `loggingBehavior: "none"` so plugin results (such as the app-lock PIN) are not written to logcat.
+- Build with `scripts/build-android.ps1` after copying a `.env.local` with the Supabase settings. Nexus Finance has its own on-device database; data matches the Nexus app only after signing in to the same account and syncing.
+- Native plugin code now exists in both repos; changes to it must be made in both until the two apps share one copy.
+
 ## 2026-11-13 — Slip review queue survives scans
 
 - The review button disappeared after an automatic scan that found nothing new: a finished scan replaced the review queue instead of adding to it, so slips restored from an earlier scan were dropped. Scans now add to the queue (`mergeReviewQueue`); a newer reading of the same image replaces the older one.
