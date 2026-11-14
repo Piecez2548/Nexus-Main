@@ -252,8 +252,9 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         // Background startup scans remain incremental in the effect above.
         // Like the automatic scan, read only the albums banking apps save
         // slips into: OCR on every camera photo took hours and found nothing.
+        // With banks chosen, only their albums (plus generic slip albums).
         // No bank album found falls back to the whole gallery.
-        const bankAlbumIds = await findBankAlbumIds();
+        const bankAlbumIds = await findBankAlbumIds(bankIds);
         await scan.scanNativeGallery(
           false,
           dateRange,
