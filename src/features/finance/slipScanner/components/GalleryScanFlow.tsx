@@ -250,7 +250,17 @@ export default function GalleryScanFlow({ extractor, automaticScan = true, initi
         // This is the explicit "scan all" action, so do not reuse the
         // incremental watermark/cache that intentionally skips old images.
         // Background startup scans remain incremental in the effect above.
-        await scan.scanNativeGallery(false, dateRange, true);
+        // Like the automatic scan, read only the albums banking apps save
+        // slips into: OCR on every camera photo took hours and found nothing.
+        // No bank album found falls back to the whole gallery.
+        const bankAlbumIds = await findBankAlbumIds();
+        await scan.scanNativeGallery(
+          false,
+          dateRange,
+          true,
+          undefined,
+          bankAlbumIds && bankAlbumIds.length > 0 ? bankAlbumIds : undefined,
+        );
         setScanSettled(true);
       } catch (err) {
         toast.error(toErrorMessage(err));
