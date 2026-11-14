@@ -2,7 +2,22 @@
 
 Master registry of all planned and completed Nexus tasks, grouped by Epic. See [README.md](README.md) for conventions and lifecycle.
 
-**Last Updated:** 2026-09-14
+**Last Updated:** 2026-11-14
+
+## Slip scanner, sync and Android — 2026-11-13 to 2026-11-14
+
+| Task | Status | Scope / evidence |
+|---|---|---|
+| Nexus Finance standalone Android app | Done | `com.nexus.finance`, opens on `/dashboard`, installs beside `com.nexus.app` |
+| K PLUS date and reference parsing | Done | OCR-tolerant Thai month and reference label; parser version 3 |
+| Review queue survives scans | Done | `mergeReviewQueue`, `latestCandidatePerAsset` |
+| Supabase table grants | Done | Migration `20261113120000`; applied to the live project; sync verified (32 transactions) |
+| Scan Gallery reads only bank albums; skip photos with no slip | Done | `findBankAlbumIds`, `skipUnreadable`; verified on the phone (5 K PLUS slips in about 30 s) |
+| K PLUS payee, reference and amount fixes | Done | Parser version 4; checked against the OCR text of 5 real slips |
+| Scan only the chosen banks' albums | In review | PR #19; on-device check pending |
+| Consolidate code shared with the Nexus repo | Planned | Needs a plan |
+| Own-account transfer detection | Planned | |
+| Investigate WebView crash after biometric unlock (Nexus hub app) | Planned | Needs the phone |
 
 ## Release readiness coordination — 2026-09-12
 
