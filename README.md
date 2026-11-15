@@ -1,5 +1,7 @@
 # Nexus Main
 
+> **Archived on 2026-11-15.** Nexus Finance (web and Android) is now built from the [Nexus](https://github.com/Piecez2548/Nexus) repository with `VITE_APP_TARGET=finance`; see its [consolidation plan](https://github.com/Piecez2548/Nexus/blob/main/docs/CONSOLIDATION_PLAN_2026-11-14.md). The production site https://nexus-main-phi.vercel.app now deploys from Nexus. This repository is kept read-only for history; the last state before the move is tagged `pre-consolidation-2026-11`. Make all changes in Nexus.
+
 Nexus Main is the primary web and Android workspace for personal finance, planning, and related productivity workflows. The standalone repository is built from the Nexus application source and is maintained as an independently deployable project.
 
 | Resource | URL |
